@@ -1,0 +1,609 @@
+const { sequelize } = require('../config/database');
+const Sale = require('../models/Sale');
+const SaleItem = require('../models/SaleItem');
+const Product = require('../models/Product');
+const Expense = require('../models/Expense');
+const User = require('../models/User');
+const Invoice = require('../models/Invoice');
+const CashSession = require('../models/CashSession');
+const Shop = require('../models/Shop');
+const DailyReport = require('../models/DailyReport');
+const AuditService = require('./audit.service');
+const { Op, fn, col, literal } = require('sequelize');
+
+class ReportService {
+  /**
+   * GET /reports/daily — Sales summary for a given date
+   */
+  static _normalizeDecimal(value) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  static _buildHourlyBreakdown(rows = []) {
+    const hours = Array.from({ length: 24 }, (_, index) => ({ hour: index, total: 0, count: 0 }));
+
+    rows.forEach(row => {
+      const hour = parseInt(row.hour, 10);
+      if (Number.isNaN(hour) || hour < 0 || hour > 23) return;
+      hours[hour] = {
+        hour,
+        total: this._normalizeDecimal(row.sales_total),
+        count: parseInt(row.sale_count || 0, 10)
+      };
+    });
+
+    const hourlySales = hours.map(h => ({ hour: h.hour, total: h.total }));
+    const hourlyTransactions = hours.map(h => ({ hour: h.hour, count: h.count }));
+    const peakHourRow = hours.reduce((winner, current) => current.total > winner.total ? current : winner, hours[0]);
+
+    return {
+      hourly_sales: hourlySales,
+      hourly_transactions: hourlyTransactions,
+      peak_hour: peakHourRow ? peakHourRow.hour : 0
+    };
+  }
+
+  static _buildInvoiceValidation(salesWithInvoices = []) {
+    const missingInvoices = [];
+    const amountMismatches = [];
+    const invalidInvoices = [];
+    const statusCounts = {};
+
+    salesWithInvoices.forEach(sale => {
+      const saleTotal = this._normalizeDecimal(sale.total_amount);
+      const saleTax = this._normalizeDecimal(sale.tax_amount);
+
+      if (!sale.Invoice) {
+        missingInvoices.push({
+          sale_id: sale.id,
+          shop_id: sale.ShopId,
+          user_id: sale.UserId,
+          sale_total: saleTotal,
+          sale_tax: saleTax,
+          created_at: sale.createdAt
+        });
+        return;
+      }
+
+      const invoice = sale.Invoice;
+      const invoiceTotal = this._normalizeDecimal(invoice.total_amount);
+      const invoiceTax = this._normalizeDecimal(invoice.tax_amount);
+      statusCounts[invoice.status] = (statusCounts[invoice.status] || 0) + 1;
+
+      if (!invoice.invoice_number || String(invoice.invoice_number).trim() === '') {
+        invalidInvoices.push({
+          invoice_id: invoice.id,
+          sale_id: sale.id,
+          reason: 'Missing invoice number',
+          status: invoice.status
+        });
+      }
+
+      if (Math.abs(saleTotal - invoiceTotal) > 0.009 || Math.abs(saleTax - invoiceTax) > 0.009) {
+        amountMismatches.push({
+          invoice_id: invoice.id,
+          sale_id: sale.id,
+          sale_total: saleTotal,
+          invoice_total: invoiceTotal,
+          sale_tax: saleTax,
+          invoice_tax: invoiceTax,
+          difference: parseFloat((invoiceTotal - saleTotal).toFixed(2)),
+          status: invoice.status
+        });
+      }
+    });
+
+    return {
+      total_invoices: Object.values(statusCounts).reduce((sum, count) => sum + count, 0),
+      status_summary: statusCounts,
+      missing_invoices: missingInvoices,
+      invoice_mismatches: amountMismatches,
+      invalid_invoices: invalidInvoices,
+      missing_count: missingInvoices.length,
+      mismatch_count: amountMismatches.length,
+      invalid_count: invalidInvoices.length,
+      consistency_check: missingInvoices.length === 0 && amountMismatches.length === 0 && invalidInvoices.length === 0
+    };
+  }
+
+  static async _persistDailyReport(report) {
+    const payload = {
+      ShopId: report.shopId ?? null,
+      report_date: report.date,
+      generated_at: new Date(),
+      total_sales: report.total_sales,
+      total_expenses: report.total_expenses,
+      net_profit: report.net_profit,
+      total_tax: report.total_tax,
+      total_cogs: report.total_cogs,
+      sale_count: report.sale_count,
+      payment_summary: report.payment_summary,
+      cashier_breakdown: report.cashier_breakdown,
+      top_items: report.top_products
+    };
+
+    const where = {
+      report_date: report.date,
+      ShopId: report.shopId ?? null
+    };
+
+    const existingReports = await DailyReport.findAll({ where });
+    if (existingReports.length > 0) {
+      const [primaryReport, ...duplicates] = existingReports;
+      if (duplicates.length > 0) {
+        await Promise.all(duplicates.map(duplicate => duplicate.destroy()));
+      }
+      const updatedReport = await primaryReport.update(payload);
+      AuditService.log({
+        userId: null,
+        shopId: payload.ShopId,
+        actionType: 'DAILY_REPORT_GENERATED',
+        tableName: 'DailyReports',
+        newValues: { report_date: payload.report_date, ShopId: payload.ShopId }
+      });
+      return updatedReport;
+    }
+
+    const createdReport = await DailyReport.create(payload);
+    AuditService.log({
+      userId: null,
+      shopId: payload.ShopId,
+      actionType: 'DAILY_REPORT_GENERATED',
+      tableName: 'DailyReports',
+      newValues: { report_date: payload.report_date, ShopId: payload.ShopId }
+    });
+    return createdReport;
+  }
+
+  static async daily(date, shopId = null) {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const start = `${targetDate} 00:00:00`;
+    const end = `${targetDate} 23:59:59`;
+
+    const whereSale = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [start, end] }
+    };
+    if (shopId) whereSale.ShopId = shopId;
+
+    const whereExpense = {
+      date: { [Op.between]: [start, end] }
+    };
+    if (shopId) whereExpense.ShopId = shopId;
+
+    const [totals, paymentMethods, cashierRows, topItems, totalExpenses, cogsRow, hourlyRows, salesWithInvoices, sessionsOpened, sessionsClosed, activeSessions] = await Promise.all([
+      Sale.findOne({
+        attributes: [
+          [fn('COUNT', col('id')), 'sale_count'],
+          [fn('SUM', col('total_amount')), 'total_sales'],
+          [fn('SUM', col('tax_amount')), 'total_tax'],
+          [fn('SUM', literal("CASE WHEN tax_type = 'TVA' THEN tax_amount ELSE 0 END")), 'total_tva'],
+          [fn('SUM', literal("CASE WHEN tax_type = 'NTVA' THEN tax_amount ELSE 0 END")), 'total_ntva']
+        ],
+        where: whereSale,
+        raw: true
+      }),
+      Sale.findAll({
+        attributes: [
+          'paymentMethod',
+          [fn('COUNT', col('id')), 'payment_count'],
+          [fn('SUM', col('total_amount')), 'payment_total']
+        ],
+        where: whereSale,
+        group: ['paymentMethod'],
+        raw: true
+      }),
+      Sale.findAll({
+        attributes: [
+          'UserId',
+          [fn('COUNT', col('Sale.id')), 'sale_count'],
+          [fn('SUM', col('total_amount')), 'total_revenue']
+        ],
+        include: [{ model: User, attributes: ['id', 'full_name', 'role'] }],
+        where: whereSale,
+        group: ['UserId', 'User.id', 'User.full_name', 'User.role'],
+        raw: false,
+        subQuery: false
+      }),
+      SaleItem.findAll({
+        attributes: [
+          'ProductId',
+          [fn('SUM', col('SaleItem.quantity')), 'quantity_sold'],
+          [fn('SUM', col('SaleItem.subTotal')), 'revenue']
+        ],
+        include: [
+          { model: Product, attributes: ['id', 'name'] },
+          { model: Sale, attributes: [], where: whereSale }
+        ],
+        group: ['ProductId', 'Product.id', 'Product.name'],
+        order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
+        limit: 5,
+        raw: false,
+        subQuery: false
+      }),
+      Expense.sum('amount', { where: whereExpense }),
+      SaleItem.findOne({
+        attributes: [[literal('SUM(quantity * unitCostSnapshot)'), 'total_cogs']],
+        include: [{ model: Sale, attributes: [], where: whereSale }],
+        raw: true,
+        subQuery: false
+      }),
+      Sale.findAll({
+        attributes: [
+          [fn('HOUR', col('createdAt')), 'hour'],
+          [fn('COUNT', col('id')), 'sale_count'],
+          [fn('SUM', col('total_amount')), 'sales_total']
+        ],
+        where: whereSale,
+        group: [fn('HOUR', col('createdAt'))],
+        order: [[literal('hour'), 'ASC']],
+        raw: true
+      }),
+      Sale.findAll({
+        attributes: ['id', 'total_amount', 'tax_amount', 'UserId', 'ShopId', 'createdAt'],
+        where: whereSale,
+        include: [{ model: Invoice, attributes: ['id', 'total_amount', 'tax_amount', 'status', 'invoice_number'], required: false }],
+        raw: false,
+        subQuery: false
+      }),
+      CashSession.count({ where: { opened_at: { [Op.between]: [start, end] }, ...(shopId ? { ShopId: shopId } : {}) } }),
+      CashSession.count({ where: { closed_at: { [Op.between]: [start, end] }, ...(shopId ? { ShopId: shopId } : {}) } }),
+      CashSession.count({ where: { status: 'open', ...(shopId ? { ShopId: shopId } : {}) } })
+    ]);
+
+    const totalsRow = totals || {};
+    const totalSales = this._normalizeDecimal(totalsRow.total_sales);
+    const totalTax = this._normalizeDecimal(totalsRow.total_tax);
+    const totalExpensesValue = this._normalizeDecimal(totalExpenses);
+    const totalCogs = this._normalizeDecimal(cogsRow?.total_cogs);
+
+    const paymentSummary = {
+      CASH: 0,
+      MOBILE_MONEY: 0,
+      CREDIT: 0
+    };
+    paymentMethods.forEach(row => {
+      paymentSummary[row.paymentMethod] = this._normalizeDecimal(row.payment_total);
+    });
+
+    const cashierBreakdown = cashierRows.map(row => ({
+      cashier_id: row.User?.id || row.UserId,
+      cashier_name: row.User?.full_name || null,
+      total_sales: this._normalizeDecimal(row.get('total_revenue')),
+      transactions: parseInt(row.get('sale_count') || 0, 10)
+    }));
+
+    const topProducts = topItems.map(item => ({
+      product_id: item.Product?.id || item.ProductId,
+      name: item.Product?.name || null,
+      quantity: this._normalizeDecimal(item.get('quantity_sold')),
+      revenue: this._normalizeDecimal(item.get('revenue'))
+    }));
+
+    const hourlyData = this._buildHourlyBreakdown(hourlyRows);
+    const invoiceValidation = this._buildInvoiceValidation(salesWithInvoices);
+
+    const report = {
+      shopId: shopId || null,
+      date: targetDate,
+      sale_count: parseInt(totalsRow.sale_count || 0, 10),
+      total_sales: totalSales,
+      total_tax: totalTax,
+      total_expenses: totalExpensesValue,
+      net_profit: totalSales - totalExpensesValue,
+      hourly_sales: hourlyData.hourly_sales,
+      hourly_transactions: hourlyData.hourly_transactions,
+      peak_hour: hourlyData.peak_hour,
+      payment_summary: paymentSummary,
+      cashier_breakdown: cashierBreakdown,
+      invoice_summary: {
+        total_invoices: invoiceValidation.total_invoices,
+        consistency_check: invoiceValidation.consistency_check,
+        missing_invoices: invoiceValidation.missing_count,
+        mismatch_count: invoiceValidation.mismatch_count
+      },
+      top_products: topProducts,
+      cash_sessions: {
+        opened: sessionsOpened,
+        closed: sessionsClosed,
+        active: activeSessions
+      },
+      total_cogs: totalCogs,
+      gross_profit: totalSales - totalCogs
+    };
+
+    await this._persistDailyReport(report);
+    return report;
+  }
+
+  static async generateDailyReportsForDate(date, shopId = null) {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    if (shopId) {
+      const report = await this.daily(targetDate, shopId);
+      return { shop_id: shopId, report_date: targetDate, report };
+    }
+
+    const globalReport = await this.daily(targetDate, null);
+    const shops = await Shop.findAll({ attributes: ['id'] });
+    const shopReports = [];
+
+    for (const shop of shops) {
+      shopReports.push({ shop_id: shop.id, report: await this.daily(targetDate, shop.id) });
+    }
+
+    return {
+      report_date: targetDate,
+      generated_at: new Date(),
+      global_report: globalReport,
+      shop_reports: shopReports
+    };
+  }
+
+  static async generateDailyReportsForPreviousDay() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const targetDate = yesterday.toISOString().split('T')[0];
+    return this.generateDailyReportsForDate(targetDate);
+  }
+
+  /**
+   * GET /reports/monthly — Sales summary for a given month
+   */
+  static async monthly(year, month, shopId = null) {
+    const y = year  || new Date().getFullYear();
+    const m = month || new Date().getMonth() + 1;
+    const paddedMonth = String(m).padStart(2, '0');
+
+    const start = `${y}-${paddedMonth}-01 00:00:00`;
+    const end   = `${y}-${paddedMonth}-31 23:59:59`;
+
+    const where = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [start, end] }
+    };
+    if (shopId) where.ShopId = shopId;
+
+    const rows = await Sale.findAll({
+      attributes: [
+        [fn('DATE', col('createdAt')), 'sale_date'],
+        [fn('SUM', col('total_amount')), 'total_sales'],
+        [fn('COUNT', col('id')), 'sale_count']
+      ],
+      where,
+      group: [fn('DATE', col('createdAt'))],
+      order: [[fn('DATE', col('createdAt')), 'ASC']],
+      raw: true
+    });
+
+    const totalRevenue  = rows.reduce((sum, r) => sum + parseFloat(r.total_sales), 0);
+    const totalCount    = rows.reduce((sum, r) => sum + parseInt(r.sale_count), 0);
+
+    return { year: y, month: m, total_revenue: totalRevenue, total_count: totalCount, daily_breakdown: rows };
+  }
+
+  /**
+   * GET /reports/top-products — Best-selling products
+   */
+  static async topProducts(limit = 10, startDate, endDate, shopId = null) {
+    const whereSale = { status: 'COMPLETED' };
+    if (startDate && endDate) {
+      whereSale.createdAt = { [Op.between]: [startDate, endDate] };
+    }
+    if (shopId) whereSale.ShopId = shopId;
+
+    const items = await SaleItem.findAll({
+      attributes: [
+        'ProductId',
+        [fn('SUM', col('SaleItem.quantity')), 'total_sold'],
+        [fn('SUM', col('SaleItem.sub_total')), 'total_revenue']
+      ],
+      include: [
+        { model: Product, attributes: ['id', 'name'] },
+        { model: Sale, attributes: [], where: whereSale }
+      ],
+      group: ['ProductId', 'Product.id', 'Product.name'],
+      order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
+      limit: parseInt(limit),
+      raw: false,
+      subQuery: false
+    });
+
+    return items;
+  }
+
+  /**
+   * GET /reports/profit — Profit per date range
+   */
+  static async profit(startDate, endDate, shopId = null) {
+    const start = startDate || new Date().toISOString().split('T')[0];
+    const end = endDate || new Date().toISOString().split('T')[0];
+
+    const whereSale = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [`${start} 00:00:00`, `${end} 23:59:59`] }
+    };
+    if (shopId) whereSale.ShopId = shopId;
+
+    const whereExpense = {
+      date: { [Op.between]: [`${start} 00:00:00`, `${end} 23:59:59`] }
+    };
+    if (shopId) whereExpense.ShopId = shopId;
+
+    const [salesItems, expenses] = await Promise.all([
+      SaleItem.findAll({
+        attributes: [
+          'ProductId',
+          [fn('SUM', col('SaleItem.quantity')), 'total_qty'],
+          [fn('SUM', col('SaleItem.subTotal')), 'total_revenue'],
+          [literal('SUM(quantity * unitCostSnapshot)'), 'total_cost']
+        ],
+        include: [
+          { model: Product, attributes: ['name'] },
+          {
+            model: Sale,
+            attributes: [],
+            where: whereSale
+          }
+        ],
+        group: ['ProductId', 'Product.id', 'Product.name'],
+        raw: false,
+        subQuery: false
+      }),
+      Expense.findAll({
+        where: whereExpense
+      })
+    ]);
+
+    const grossRevenue = salesItems.reduce((sum, item) => sum + parseFloat(item.get('total_revenue') || 0), 0);
+    const costOfGoods = salesItems.reduce((sum, item) => sum + parseFloat(item.get('total_cost') || 0), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+    const grossProfit = grossRevenue - costOfGoods;
+    const netProfit = grossProfit - totalExpenses;
+
+    return {
+      period: { start, end },
+      gross_revenue: grossRevenue,
+      cost_of_goods: costOfGoods,
+      gross_profit: grossProfit,
+      total_expenses: totalExpenses,
+      net_profit: netProfit
+    };
+  }
+
+  /**
+   * GET /reports/stock-alerts — Products below minimum stock
+   */
+  static async stockAlerts(shopId = null) {
+    const whereStock = {
+      quantity: { [Op.lt]: 10 }
+    };
+    if (shopId) whereStock.ShopId = shopId;
+
+    const products = await Product.findAll({
+      include: [{
+        model: Stock,
+        where: whereStock,
+        required: true
+      }],
+      attributes: ['id', 'name', 'purchasePrice'],
+      order: [[Stock, 'quantity', 'ASC']]
+    });
+    return products;
+  }
+
+  /**
+   * GET /reports/employee-sales — Sales per cashier/employee
+   */
+  static async employeeSales(startDate, endDate, shopId = null) {
+    const start = startDate || new Date().toISOString().split('T')[0];
+    const end   = endDate   || new Date().toISOString().split('T')[0];
+
+    const where = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [`${start} 00:00:00`, `${end} 23:59:59`] }
+    };
+    if (shopId) where.ShopId = shopId;
+
+    const rows = await Sale.findAll({
+      attributes: [
+        'UserId',
+        [fn('COUNT', col('Sale.id')), 'total_sales'],
+        [fn('SUM', col('total_amount')), 'total_revenue']
+      ],
+      include: [
+        { model: User, attributes: ['id', 'full_name', 'role'] }
+      ],
+      where,
+      group: ['UserId', 'User.id', 'User.full_name', 'User.role'],
+      order: [[fn('SUM', col('total_amount')), 'DESC']],
+      raw: false,
+      subQuery: false
+    });
+
+    return rows;
+  }
+
+  /**
+   * GET /reports/owner/global — Global per-shop aggregates for a date
+   */
+  static async ownerGlobal(date) {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const start = `${targetDate} 00:00:00`;
+    const end = `${targetDate} 23:59:59`;
+
+    const whereSale = { status: 'COMPLETED', createdAt: { [Op.between]: [start, end] } };
+    const whereExpense = { date: { [Op.between]: [start, end] } };
+
+    const [salesByShop, expensesByShop] = await Promise.all([
+      Sale.findAll({
+        attributes: [
+          'ShopId',
+          [fn('SUM', col('total_amount')), 'total_sales'],
+          [fn('COUNT', col('id')), 'sale_count']
+        ],
+        where: whereSale,
+        group: ['ShopId'],
+        raw: true
+      }),
+      Expense.findAll({
+        attributes: ['ShopId', [fn('SUM', col('amount')), 'total_expenses']],
+        where: whereExpense,
+        group: ['ShopId'],
+        raw: true
+      })
+    ]);
+
+    // merge by ShopId
+    const map = new Map();
+    salesByShop.forEach(s => map.set(s.ShopId, { ShopId: s.ShopId, total_sales: parseFloat(s.total_sales || 0), sale_count: parseInt(s.sale_count || 0, 10), total_expenses: 0 }));
+    expensesByShop.forEach(e => {
+      const rec = map.get(e.ShopId) || { ShopId: e.ShopId, total_sales: 0, sale_count: 0, total_expenses: 0 };
+      rec.total_expenses = parseFloat(e.total_expenses || e.total_expenses || 0) || parseFloat(e.total_expenses || 0);
+      map.set(e.ShopId, rec);
+    });
+
+    return Array.from(map.values()).map(r => ({
+      ...r,
+      net_profit: r.total_sales - r.total_expenses
+    }));
+  }
+
+  /**
+   * GET /reports/cashier/performance — performance for a cashier or current user
+   */
+  static async cashierPerformance({ userId = null, startDate = null, endDate = null, shopId = null }) {
+    const start = startDate || new Date().toISOString().split('T')[0];
+    const end = endDate || new Date().toISOString().split('T')[0];
+
+    const where = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [`${start} 00:00:00`, `${end} 23:59:59`] }
+    };
+    if (shopId) where.ShopId = shopId;
+    if (userId) where.UserId = userId;
+
+    const rows = await Sale.findAll({
+      attributes: [
+        'UserId',
+        [fn('COUNT', col('id')), 'transaction_count'],
+        [fn('SUM', col('total_amount')), 'total_sales']
+      ],
+      include: [{ model: User, attributes: ['id', 'full_name'] }],
+      where,
+      group: ['UserId', 'User.id', 'User.full_name'],
+      raw: false,
+      subQuery: false
+    });
+
+    return rows.map(r => ({
+      user_id: r.User?.id || r.UserId,
+      full_name: r.User?.full_name || null,
+      transaction_count: parseInt(r.get('transaction_count') || 0, 10),
+      total_sales: parseFloat(r.get('total_sales') || 0)
+    }));
+  }
+}
+
+module.exports = ReportService;
