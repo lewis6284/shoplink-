@@ -36,9 +36,8 @@ app.get('/', (req, res) => {
 });
 
 // Serve Frontend Static Files
-const frontendPath = path.resolve(__dirname, '../public');
-// This will serve /shoplink/assets/... from public/shoplink/assets/...
-app.use(express.static(frontendPath));
+const frontendPath = path.resolve(__dirname, 'public');
+
 
 // Frontend Catch-all Fallback (Single Page Application)
 app.use((req, res, next) => {
@@ -46,7 +45,7 @@ app.use((req, res, next) => {
   if (req.url.startsWith('/api') || req.url.startsWith('/shoplink/api') || req.url === '/health') {
     return next();
   }
-  
+
   // Serve the index.html from the shoplink subfolder for all frontend routes
   res.sendFile(path.join(frontendPath, 'shoplink', 'index.html'));
 });
@@ -56,7 +55,7 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   const status = err.status || 500;
   const message = err.message || 'Internal Server Error';
-  
+
   res.status(status).json({
     success: false,
     message,
