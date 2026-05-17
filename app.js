@@ -37,7 +37,8 @@ app.get('/', (req, res) => {
 
 // Serve Frontend Static Files
 const frontendPath = path.resolve(__dirname, 'public');
-
+// This will serve /shoplink/assets/... from public/shoplink/assets/...
+app.use(express.static(frontendPath));
 
 // Frontend Catch-all Fallback (Single Page Application)
 app.use((req, res, next) => {
