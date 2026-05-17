@@ -1,5 +1,5 @@
-const { connectDB } = require('./src/config/database');
-const ProductService = require('./src/services/product.service');
+const { connectDB } = require('./config/database');
+const ProductService = require('./services/product.service');
 
 async function run() {
   await connectDB();

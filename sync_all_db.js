@@ -1,8 +1,8 @@
-const { sequelize } = require('./src/config/database');
+const { sequelize } = require('./config/database');
 const fs = require('fs');
 const path = require('path');
 
-const modelsDir = path.join(__dirname, 'src', 'models');
+const modelsDir = path.join(__dirname, 'models');
 fs.readdirSync(modelsDir)
   .filter(file => file.endsWith('.js'))
   .forEach(file => {

@@ -1,26 +1,26 @@
-const { sequelize } = require('./src/config/database');
+const { sequelize } = require('./config/database');
 
 // Import Models
-const User = require('./src/models/User');
-const Session = require('./src/models/Session');
-const Shop = require('./src/models/Shop');
-const UserShop = require('./src/models/UserShop');
-const Category = require('./src/models/Category');
-const Brand = require('./src/models/Brand');
-const Product = require('./src/models/Product');
-const ProductPricingRule = require('./src/models/ProductPricingRule');
-const GlobalStock = require('./src/models/GlobalStock');
-const Stock = require('./src/models/Stock');
-const StockTransfer = require('./src/models/StockTransfer');
-const Sale = require('./src/models/Sale');
-const SaleItem = require('./src/models/SaleItem');
-const Invoice = require('./src/models/Invoice');
-const Expense = require('./src/models/Expense');
-const ShopFinancial = require('./src/models/ShopFinancial');
-const Customer = require('./src/models/Customer');
-const CashRegister = require('./src/models/CashRegister');
-const CashSession = require('./src/models/CashSession');
-const AuditLog = require('./src/models/AuditLog');
+const User = require('./models/User');
+const Session = require('./models/Session');
+const Shop = require('./models/Shop');
+const UserShop = require('./models/UserShop');
+const Category = require('./models/Category');
+const Brand = require('./models/Brand');
+const Product = require('./models/Product');
+const ProductPricingRule = require('./models/ProductPricingRule');
+const GlobalStock = require('./models/GlobalStock');
+const Stock = require('./models/Stock');
+const StockTransfer = require('./models/StockTransfer');
+const Sale = require('./models/Sale');
+const SaleItem = require('./models/SaleItem');
+const Invoice = require('./models/Invoice');
+const Expense = require('./models/Expense');
+const ShopFinancial = require('./models/ShopFinancial');
+const Customer = require('./models/Customer');
+const CashRegister = require('./models/CashRegister');
+const CashSession = require('./models/CashSession');
+const AuditLog = require('./models/AuditLog');
 
 // --- 🏪 SHOP RELATIONS (MULTI-TENANCY) ---
 Shop.hasMany(User, { foreignKey: 'ShopId' });

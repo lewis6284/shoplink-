@@ -1,0 +1,238 @@
+
+// --- SERVICE LOGIC INLINED ---
+const Sale = require('../models/Sale');
+const SaleItem = require('../models/SaleItem');
+const Invoice = require('../models/Invoice');
+const Stock = require('../models/Stock');
+const Product = require('../models/Product');
+const PricingEngine = require('../utils/pricingEngine');
+const FinancialService = require('../utils/financial');
+const AuditService = require('../utils/audit');
+const { sequelize } = require('../config/database');
+
+exports.createSale = async (saleData, items, userId, req = null) => {
+    const transaction = await sequelize.transaction();
+    const shopId = saleData.ShopId || req?.shopId;
+
+    try {
+      // 1. Validate Stock & Calculate Totals
+      let subtotal = 0;
+      let taxAmount = 0;
+      const processedItems = [];
+
+      for (const item of items) {
+        const product = await Product.findByPk(item.ProductId, { transaction });
+        if (!product) throw new Error(`Product ${item.ProductId} not found`);
+
+        // Check Shop Stock
+        const stock = await Stock.findOne({
+          where: { ProductId: item.ProductId, ShopId: shopId },
+          transaction
+        });
+
+        if (!stock || Number(stock.quantity) < Number(item.quantity)) {
+          throw new Error(`Insufficient stock for ${product.name} at this shop`);
+        }
+
+        // Apply Pricing Engine
+        const pricing = PricingEngine.calculate(product, saleData.customerType || 'retail', item.quantity);
+        
+        processedItems.push({
+          ProductId: item.ProductId,
+          quantity: item.quantity,
+          unitPrice: pricing.unitPrice,
+          subTotal: pricing.total,
+          unitCostSnapshot: product.purchasePrice,
+          taxType: pricing.taxType
+        });
+
+        subtotal += Number(pricing.subtotal);
+        taxAmount += Number(pricing.taxAmount);
+
+        // Reduce Stock
+        stock.quantity = Number(stock.quantity) - Number(item.quantity);
+        await stock.save({ transaction });
+      }
+
+      const totalAmount = subtotal + taxAmount;
+
+      // 2. Create Sale Header
+      const cashSessionId = saleData.CashSessionId || req?.cashSessionId || req?.headers?.['x-cash-session-id'] || null;
+      const saleTaxType = processedItems.some(item => item.taxType === 'TVA') ? 'TVA' : 'NTVA';
+      const sale = await Sale.create({
+        ...saleData,
+        ShopId: shopId,
+        UserId: userId,
+        CashSessionId: cashSessionId,
+        subtotal,
+        tax_amount: taxAmount,
+        tax_type: saleTaxType,
+        total_amount: totalAmount,
+        status: 'COMPLETED'
+      }, { transaction });
+
+      // 3. Create Sale Items
+      await SaleItem.bulkCreate(processedItems.map(pi => ({
+        ProductId: pi.ProductId,
+        quantity: pi.quantity,
+        unitPrice: pi.unitPrice,
+        subTotal: pi.subTotal,
+        unitCostSnapshot: pi.unitCostSnapshot,
+        SaleId: sale.id
+      })), { transaction });
+
+      // 4. Generate Auto Invoice
+      const invoiceNumber = 'INV-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);
+      const now = new Date();
+      const invoice = await Invoice.create({
+        SaleId: sale.id,
+        ShopId: shopId,
+        UserId: userId,
+        invoice_number: invoiceNumber,
+        subtotal,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
+        tax_type: processedItems[0]?.taxType || 'NTVA',
+        status: 'GENERATED',
+        createdAt: now,
+        updatedAt: now
+      }, { transaction });
+
+      // 5. Update Shop Financials
+      await FinancialService.recordSale(shopId, totalAmount, taxAmount, processedItems[0]?.taxType);
+
+      // 6. Audit Log
+      await AuditService.log({
+        userId,
+        shopId,
+        actionType: 'SALE_CREATE',
+        tableName: 'Sales',
+        newValues: { saleId: sale.id, invoiceNumber, CashSessionId: cashSessionId }
+      });
+
+      await transaction.commit();
+      return { sale, invoice };
+    } catch (error) {
+      await transaction.rollback();
+      console.error('🔥 POS Transaction Failed:', error.message);
+      throw error;
+    }
+  };
+
+  exports.cancelSale = async (saleId, userId, reason, req = null) => {
+    const sale = await Sale.findByPk(saleId);
+    if (!sale) throw new Error('Sale not found');
+    if (sale.status === 'CANCELLED') return sale;
+
+    sale.status = 'CANCELLED';
+    sale.cancel_reason = reason;
+    await sale.save();
+
+    await AuditService.log({
+      userId,
+      shopId: sale.ShopId,
+      actionType: 'SALE_CANCEL',
+      tableName: 'Sales',
+      oldValues: { status: 'COMPLETED' },
+      newValues: { status: 'CANCELLED', reason }
+    });
+    return sale;
+  };
+// --- CONTROLLER LOGIC ---
+
+const ApiResponse = require('../utils/response');
+const Customer = require('../models/Customer');
+const User = require('../models/User');
+const { Op } = require('sequelize');
+
+
+  exports.getAll = async (req, res, next) => {
+    try {
+      const { shop_id, range, limit = 200 } = req.query;
+
+      // Build date range filter
+      const where = {};
+      if (shop_id) where.ShopId = shop_id;
+
+      if (range) {
+        const now = new Date();
+        const from = new Date();
+        if (range === '7d')  from.setDate(now.getDate() - 7);
+        else if (range === '30d') from.setDate(now.getDate() - 30);
+        else if (range === '1y')  from.setFullYear(now.getFullYear() - 1);
+        where.createdAt = { [Op.gte]: from };
+      }
+
+      const sales = await Sale.findAll({
+        where,
+        include: [
+          { model: Customer, required: false },
+          { model: User, required: false, attributes: ['id', 'full_name', 'email'] },
+          { model: SaleItem, include: [{ model: Product, required: false }] }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit, 10)
+      });
+      return ApiResponse.success(res, sales);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.getById = async (req, res, next) => {
+    try {
+      const sale = await Sale.findByPk(req.params.id, {
+        include: [
+          { model: Customer },
+          { model: SaleItem, include: [{ model: Product }] }
+        ]
+      });
+      if (!sale) return ApiResponse.error(res, 'Sale not found', 404);
+      return ApiResponse.success(res, sale);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.create = async (req, res, next) => {
+    try {
+      let { items, saleData, idempotency_key } = req.body;
+      
+      // Handle case where body is directly the sale data (excluding items)
+      if (!saleData) {
+        const { items: _, ...rest } = req.body;
+        saleData = rest;
+      }
+
+      // 🔒 Idempotency Check
+      const key = idempotency_key || saleData.idempotency_key;
+      if (key) {
+        const existingSale = await Sale.findOne({ 
+          where: { idempotency_key: key },
+          include: [{ model: SaleItem, include: [Product] }]
+        });
+        if (existingSale) {
+          return ApiResponse.success(res, existingSale, 'Sale already processed (Idempotent)', 200);
+        }
+      }
+      
+      const sale = await exports.createSale({ ...saleData, idempotency_key: key }, items, req.user.id, req);
+      return ApiResponse.success(res, sale, 'Sale created successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.cancel = async (req, res, next) => {
+    try {
+      const { reason } = req.body;
+      const sale = await exports.cancelSale(req.params.id, req.user.id, reason, req);
+      return ApiResponse.success(res, sale, 'Sale cancelled successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+
+
+

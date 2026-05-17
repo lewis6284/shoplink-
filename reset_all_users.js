@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { sequelize } = require('./src/config/database');
-const User = require('./src/models/User');
+const { sequelize } = require('./config/database');
+const User = require('./models/User');
 
 const accounts = [
   { email: 'boss@gmail.com',          password: 'boss123',      is_active: true  },

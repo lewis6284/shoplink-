@@ -1,6 +1,6 @@
-const { sequelize } = require('./src/config/database');
-const User = require('./src/models/User');
-const Shop = require('./src/models/Shop');
+const { sequelize } = require('./config/database');
+const User = require('./models/User');
+const Shop = require('./models/Shop');
 
 async function createUsers() {
   try {

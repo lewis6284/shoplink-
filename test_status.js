@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { sequelize } = require('./src/config/database');
-const User = require('./src/models/User');
+const { sequelize } = require('./config/database');
+const User = require('./models/User');
 
 async function testStatus() {
   await sequelize.authenticate();

@@ -1,5 +1,5 @@
-const { connectDB } = require('./src/config/database');
-const TransferService = require('./src/services/stock.transfer.service');
+const { connectDB } = require('./config/database');
+const TransferService = require('./services/stock.transfer.service');
 
 async function run() {
   await connectDB();

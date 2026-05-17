@@ -1,7 +1,7 @@
-const { sequelize } = require('./src/config/database');
-const StockMovement = require('./src/models/StockMovement');
-const Stock = require('./src/models/Stock');
-const Product = require('./src/models/Product');
+const { sequelize } = require('./config/database');
+const StockMovement = require('./models/StockMovement');
+const Stock = require('./models/Stock');
+const Product = require('./models/Product');
 
 async function test() {
   try {
