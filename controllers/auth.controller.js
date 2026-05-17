@@ -118,6 +118,9 @@ const AuthService = {
       throw error;
     }
 
+    if (userData.password) {
+      userData.password_hash = userData.password;
+    }
     const user = await User.create(userData);
     const userJson = user.toJSON();
     delete userJson.password_hash;

@@ -33,6 +33,9 @@ exports.getById = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     const data = { ...req.body };
+    if (req.body.password) {
+      data.password_hash = req.body.password;
+    }
     if (req.shopId && User.getAttributes  && User.getAttributes .ShopId) {
       data.ShopId = req.shopId;
     }
@@ -60,7 +63,11 @@ exports.update = async (req, res, next) => {
       return ApiResponse.error(res, 'Access denied', 403);
     }
 
-    await existing.update(req.body);
+    const data = { ...req.body };
+    if (req.body.password) {
+      data.password_hash = req.body.password;
+    }
+    await existing.update(data);
     return ApiResponse.success(res, existing, 'Updated successfully');
   } catch (error) {
     next(error);
