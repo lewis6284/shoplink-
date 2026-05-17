@@ -11,7 +11,7 @@ router.use(roleMiddleware(['owner', 'manager'])); // Owner manages managers, Man
 router.get('/', UserController.getAll);
 router.get('/:id', UserController.getById);
 router.post('/', roleMiddleware(['owner']), UserController.create);
-router.put('/:id', roleMiddleware(['owner', 'manager']), UserController.update);
+router.patch('/:id', roleMiddleware(['owner', 'manager']), UserController.update);
 router.delete('/:id', roleMiddleware(['owner']), UserController.delete);
 
 module.exports = router;

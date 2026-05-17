@@ -13,7 +13,7 @@ router.get('/:id', ShopController.getById);
 
 // Write: Owner only
 router.post('/', roleMiddleware(['owner']), ShopController.create);
-router.put('/:id', roleMiddleware(['owner']), ShopController.update);
+router.patch('/:id', roleMiddleware(['owner']), ShopController.update);
 router.delete('/:id', roleMiddleware(['owner']), ShopController.delete);
 
 module.exports = router;

@@ -10,7 +10,7 @@ router.use(authMiddleware);
 router.get('/', SupplierController.getAll);
 router.get('/:id', SupplierController.getById);
 router.post('/', roleMiddleware(['manager']), SupplierController.create);
-router.put('/:id', roleMiddleware(['manager']), SupplierController.update);
+router.patch('/:id', roleMiddleware(['manager']), SupplierController.update);
 router.delete('/:id', roleMiddleware(['owner']), SupplierController.delete);
 
 module.exports = router;

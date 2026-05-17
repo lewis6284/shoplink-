@@ -7,6 +7,6 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get('/', NotificationController.getAll);
-router.put('/:id/read', NotificationController.markAsRead);
+router.patch('/:id/read', NotificationController.markAsRead);
 
 module.exports = router;
