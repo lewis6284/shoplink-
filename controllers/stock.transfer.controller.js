@@ -59,27 +59,45 @@ const StockTransferService = {
       const transfer = await StockTransfer.findByPk(transferId, { transaction });
       if (!transfer || transfer.status !== 'PENDING') throw new Error('Transfer must be in PENDING state');
 
-      // Reserve the stock
+      // 1. Verify and deduct from source
       const fromStock = await Stock.findOne({
         where: { ProductId: transfer.ProductId, ShopId: transfer.FromShopId },
         transaction
       });
 
       if (!fromStock || Number(fromStock.quantity) < Number(transfer.Quantity)) {
-        throw new Error('Insufficient stock to approve transfer');
+        throw new Error('Insufficient stock in source warehouse to complete this transfer');
       }
 
-      // Move from available to reserved
       await fromStock.decrement('quantity', { by: transfer.Quantity, transaction });
-      await fromStock.increment('reserved_quantity', { by: transfer.Quantity, transaction });
 
+      // 2. Immediately add to destination (find or create the stock record)
+      let toStock = await Stock.findOne({
+        where: { ProductId: transfer.ProductId, ShopId: transfer.ToShopId },
+        transaction
+      });
+
+      if (!toStock) {
+        await Stock.create({
+          ProductId: transfer.ProductId,
+          ShopId: transfer.ToShopId,
+          quantity: transfer.Quantity
+        }, { transaction });
+      } else {
+        await toStock.increment('quantity', { by: transfer.Quantity, transaction });
+      }
+
+      // 3. Mark transfer as completed in one go
       await transfer.update({
-        status: 'APPROVED',
-        ApprovedBy: userId
+        status: 'RECEIVED',
+        ApprovedBy: userId,
+        ReceivedBy: userId,
+        receivedAt: new Date()
       }, { transaction });
 
       await transaction.commit();
-      await AuditService.log(userId, 'TRANSFER_APPROVE', 'StockTransfers', transferId, { status: 'PENDING' }, { status: 'APPROVED' }, req);
+      await AuditService.log(userId, 'TRANSFER_COMPLETE', 'StockTransfers', transferId,
+        { status: 'PENDING' }, { status: 'RECEIVED', quantity: transfer.Quantity }, req);
       return transfer;
     } catch (error) {
       await transaction.rollback();
