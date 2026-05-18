@@ -57,7 +57,9 @@ const StockTransferService = {
     const transaction = await sequelize.transaction();
     try {
       const transfer = await StockTransfer.findByPk(transferId, { transaction });
-      if (!transfer || transfer.status !== 'PENDING') throw new Error('Transfer must be in PENDING state');
+      if (!transfer || !['PENDING', 'APPROVED', 'IN_TRANSIT'].includes(transfer.status)) {
+        throw new Error('Transfer must be in PENDING, APPROVED, or IN_TRANSIT state to complete');
+      }
 
       // 1. Verify and deduct from source
       const fromStock = await Stock.findOne({
@@ -65,11 +67,17 @@ const StockTransferService = {
         transaction
       });
 
-      if (!fromStock || Number(fromStock.quantity) < Number(transfer.Quantity)) {
-        throw new Error('Insufficient stock in source warehouse to complete this transfer');
+      if (transfer.status === 'PENDING') {
+        if (!fromStock || Number(fromStock.quantity) < Number(transfer.Quantity)) {
+          throw new Error('Insufficient available stock in the source shop/warehouse to complete this transfer');
+        }
+        await fromStock.decrement('quantity', { by: transfer.Quantity, transaction });
+      } else {
+        if (!fromStock || Number(fromStock.reserved_quantity) < Number(transfer.Quantity)) {
+          throw new Error('Insufficient reserved stock in the source shop/warehouse to complete this transfer');
+        }
+        await fromStock.decrement('reserved_quantity', { by: transfer.Quantity, transaction });
       }
-
-      await fromStock.decrement('quantity', { by: transfer.Quantity, transaction });
 
       // 2. Immediately add to destination (find or create the stock record)
       let toStock = await Stock.findOne({
@@ -90,14 +98,14 @@ const StockTransferService = {
       // 3. Mark transfer as completed in one go
       await transfer.update({
         status: 'RECEIVED',
-        ApprovedBy: userId,
+        ApprovedBy: transfer.ApprovedBy || userId,
         ReceivedBy: userId,
         receivedAt: new Date()
       }, { transaction });
 
       await transaction.commit();
       await AuditService.log(userId, 'TRANSFER_COMPLETE', 'StockTransfers', transferId,
-        { status: 'PENDING' }, { status: 'RECEIVED', quantity: transfer.Quantity }, req);
+        { status: transfer.status }, { status: 'RECEIVED', quantity: transfer.Quantity }, req);
       return transfer;
     } catch (error) {
       await transaction.rollback();
