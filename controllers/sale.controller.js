@@ -9,6 +9,7 @@ const PricingEngine = require('../utils/pricingEngine');
 const FinancialService = require('../utils/financial');
 const AuditService = require('../utils/audit');
 const { sequelize } = require('../config/database');
+const crypto = require('../utils/invoiceCrypto');
 
 exports.createSale = async (saleData, items, userId, req = null) => {
     const transaction = await sequelize.transaction();
@@ -81,8 +82,10 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         SaleId: sale.id
       })), { transaction });
 
-      // 4. Generate Auto Invoice
-      const invoiceNumber = 'INV-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);
+      // 4. Generate Auto Invoice in Facture format (e.g. FAC-L421Z)
+      const nextSequence = (await Invoice.count({ transaction })) + 1;
+      const scrambledCode = crypto.encodeInvoiceId(nextSequence);
+      const invoiceNumber = `FAC-${scrambledCode}`;
       const now = new Date();
       const invoice = await Invoice.create({
         SaleId: sale.id,
