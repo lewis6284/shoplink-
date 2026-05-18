@@ -56,6 +56,7 @@ exports.adjustStock = async (shopId, productId, quantityChange, type, reason, re
 const ApiResponse = require('../utils/response');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Shop = require('../models/Shop');
 const AuditService = require('../utils/audit');
 const { sequelize } = require('../config/database');
 
@@ -84,6 +85,11 @@ const { sequelize } = require('../config/database');
             model: Product,
             required: false,
             include: [{ model: Category, required: false }]
+          },
+          {
+            model: Shop,
+            required: false,
+            attributes: ['id', 'name']
           }
         ],
         order: [['updatedAt', 'DESC']]
