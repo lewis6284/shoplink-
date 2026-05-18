@@ -7,6 +7,7 @@ const Stock = require('../models/Stock');
 const Shop = require('../models/Shop');
 const Category = require('../models/Category');
 const Brand = require('../models/Brand');
+const Unit = require('../models/Unit');
 const { sequelize } = require('../config/database');
 const AuditService = require('../utils/audit');
 
@@ -19,6 +20,7 @@ const ProductService = {
       include: [
         { model: Category },
         { model: Brand },
+        { model: Unit },
         { model: GlobalStock }
       ],
       ...options
@@ -30,6 +32,7 @@ const ProductService = {
       include: [
         { model: Category },
         { model: Brand },
+        { model: Unit },
         { model: GlobalStock }
       ],
       ...options
