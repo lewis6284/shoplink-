@@ -159,6 +159,17 @@ const ApiResponse = require('../utils/response');
         return ApiResponse.error(res, 'Selling price must be greater than purchase price', 400);
       }
 
+      // Enforce ShopId Scoping
+      if (req.user && req.user.role !== 'owner') {
+          // Non-owners are strictly bound to their own shop
+          productData.ShopId = req.shopId;
+      } else {
+          // Owner can assign ShopId via body; empty string becomes null (Global)
+          if (productData.ShopId === "" || productData.ShopId === "global") {
+              productData.ShopId = null;
+          }
+      }
+
       const product = await ProductService.create(productData, images, req.user?.id, req);
       console.log("DEBUG: Product created:", product.id);
       return ApiResponse.success(res, product, 'Product created successfully', 201);
@@ -176,7 +187,18 @@ const ApiResponse = require('../utils/response');
         return ApiResponse.error(res, 'Selling price must be greater than purchase price', 400);
       }
 
-      const product = await ProductService.update(req.params.id, req.body, req.user.id, req);
+      const updateData = { ...req.body };
+
+      // Enforce ShopId Scoping for updates
+      if (req.user && req.user.role !== 'owner') {
+          delete updateData.ShopId; // Non-owners cannot move a product to another shop
+      } else if (updateData.ShopId !== undefined) {
+          if (updateData.ShopId === "" || updateData.ShopId === "global") {
+              updateData.ShopId = null;
+          }
+      }
+
+      const product = await ProductService.update(req.params.id, updateData, req.user.id, req);
       return ApiResponse.success(res, product, 'Product updated successfully');
     } catch (error) {
       next(error);
