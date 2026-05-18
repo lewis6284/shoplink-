@@ -152,7 +152,13 @@ const { Op } = require('sequelize');
 
       // Build date range filter
       const where = {};
-      if (shop_id) where.ShopId = shop_id;
+      
+      // Strict multi-tenancy filter: Only see sales belonging to this warehouse/shop
+      if (req.shopId) {
+        where.ShopId = req.shopId;
+      } else if (shop_id) {
+        where.ShopId = shop_id;
+      }
 
       if (range) {
         const now = new Date();
