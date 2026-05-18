@@ -12,6 +12,6 @@ router.use(shopMiddleware);
 router.get('/', SaleController.getAll);
 router.get('/:id', SaleController.getById);
 router.post('/', roleMiddleware(['cashier']), SaleController.create);
-router.post('/:id/cancel', roleMiddleware(['cashier']), SaleController.cancel);
+router.post('/:id/cancel', roleMiddleware(['manager', 'owner']), SaleController.cancel);
 
 module.exports = router;
