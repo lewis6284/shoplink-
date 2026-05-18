@@ -177,7 +177,8 @@ const { Op } = require('sequelize');
         include: [
           { model: Customer, required: false },
           { model: User, required: false, attributes: ['id', 'full_name', 'email'] },
-          { model: SaleItem, include: [{ model: Product, required: false }] }
+          { model: SaleItem, include: [{ model: Product, required: false }] },
+          { model: Invoice, required: false, attributes: ['invoice_number'] }
         ],
         order: [['createdAt', 'DESC']],
         limit: parseInt(limit, 10)
@@ -193,7 +194,8 @@ const { Op } = require('sequelize');
       const sale = await Sale.findByPk(req.params.id, {
         include: [
           { model: Customer },
-          { model: SaleItem, include: [{ model: Product }] }
+          { model: SaleItem, include: [{ model: Product }] },
+          { model: Invoice, attributes: ['invoice_number'] }
         ]
       });
       if (!sale) return ApiResponse.error(res, 'Sale not found', 404);
