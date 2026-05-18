@@ -1,4 +1,4 @@
-const User = require('../models/User');
+const { User, Shop } = require('../db');
 const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {
@@ -7,7 +7,10 @@ exports.getAll = async (req, res, next) => {
     if (req.shopId && User.getAttributes  && User.getAttributes .ShopId) {
       query.ShopId = req.shopId;
     }
-    const records = await User.findAll({ where: query });
+    const records = await User.findAll({ 
+      where: query,
+      include: [{ model: Shop, attributes: ['id', 'name'] }]
+    });
     return ApiResponse.success(res, records);
   } catch (error) {
     next(error);
@@ -20,7 +23,10 @@ exports.getById = async (req, res, next) => {
     if (req.shopId && User.getAttributes  && User.getAttributes .ShopId) {
       query.ShopId = req.shopId;
     }
-    const records = await User.findAll({ where: query });
+    const records = await User.findAll({ 
+      where: query,
+      include: [{ model: Shop, attributes: ['id', 'name'] }]
+    });
     if (!records || records.length === 0) {
       return ApiResponse.error(res, 'Record not found', 404);
     }
