@@ -21,11 +21,16 @@ const StockTransferService = {
   },
 
   async create(data, userId, req = null) {
-    const { ProductId, Quantity, FromShopId, ToShopId, notes, estimated_arrival_date, status = 'PENDING' } = data;
+    // Map both upper and lower case to handle frontend vs backend casing mismatches safely
+    const ProductId = data.ProductId || data.product_id;
+    const Quantity = data.Quantity || data.quantity;
+    const FromShopId = data.FromShopId || data.fromShopId;
+    const ToShopId = data.ToShopId || data.toShopId;
+    const { notes, estimated_arrival_date, status = 'PENDING' } = data;
 
     // Verify FromShop has enough stock (Available quantity)
     const fromStock = await Stock.findOne({
-      where: { ProductId, ShopId: FromShopId }
+      where: { ProductId, ShopId: FromShopId || null }
     });
 
     if (!fromStock || Number(fromStock.quantity) < Number(Quantity)) {

@@ -11,6 +11,7 @@ const Product = require('./models/Product');
 const ProductPricingRule = require('./models/ProductPricingRule');
 const GlobalStock = require('./models/GlobalStock');
 const Stock = require('./models/Stock');
+const StockMovement = require('./models/StockMovement');
 const StockTransfer = require('./models/StockTransfer');
 const Sale = require('./models/Sale');
 const SaleItem = require('./models/SaleItem');
@@ -124,6 +125,7 @@ module.exports = {
   ProductPricingRule,
   GlobalStock,
   Stock,
+  StockMovement,
   StockTransfer,
   Sale,
   SaleItem,
