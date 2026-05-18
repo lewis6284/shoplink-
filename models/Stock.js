@@ -19,6 +19,10 @@ const Stock = sequelize.define('Stock', {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0
   },
+  reserved_quantity: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0
+  },
   min_stock_level: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0
