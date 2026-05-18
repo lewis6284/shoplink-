@@ -21,7 +21,8 @@ const ProductService = {
         { model: Category },
         { model: Brand },
         { model: Unit },
-        { model: GlobalStock }
+        { model: GlobalStock },
+        { model: Stock }
       ],
       ...options
     });
@@ -211,13 +212,25 @@ const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const query = { ...req.query };
+    const { search, ...restQuery } = req.query;
+    const query = { ...restQuery };
+
     if (req.shopId) {
       const { Op } = require('sequelize');
       query.ShopId = {
         [Op.or]: [req.shopId, null]
       };
     }
+
+    if (search) {
+      const { Op } = require('sequelize');
+      query[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { barcode: { [Op.like]: `%${search}%` } },
+        { product_code: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
     const records = await ProductService.getAll(query);
     return ApiResponse.success(res, records);
   } catch (error) {
