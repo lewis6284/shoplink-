@@ -50,8 +50,8 @@ const Product = sequelize.define('Product', {
     defaultValue: 0
   },
   tax_type: {
-    type: DataTypes.ENUM('TVA', 'NTVA'),
-    defaultValue: 'NTVA'
+    type: DataTypes.ENUM('TVA', 'HTVA'),
+    defaultValue: 'HTVA'
   },
   tax_rate: {
     type: DataTypes.DECIMAL(5, 2),
@@ -68,10 +68,6 @@ const Product = sequelize.define('Product', {
   SupplierId: {
     type: DataTypes.CHAR(36),
     allowNull: true
-  },
-  is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
   }
 }, {
   tableName: 'Products',

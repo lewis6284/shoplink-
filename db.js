@@ -21,6 +21,7 @@ const Customer = require('./models/Customer');
 const CashRegister = require('./models/CashRegister');
 const CashSession = require('./models/CashSession');
 const AuditLog = require('./models/AuditLog');
+const Unit = require('./models/Unit');
 
 // --- 🏪 SHOP RELATIONS (MULTI-TENANCY) ---
 Shop.hasMany(User, { foreignKey: 'ShopId' });
@@ -71,6 +72,9 @@ Product.belongsTo(Category, { foreignKey: 'CategoryId' });
 
 Brand.hasMany(Product, { foreignKey: 'BrandId' });
 Product.belongsTo(Brand, { foreignKey: 'BrandId' });
+
+Unit.hasMany(Product, { foreignKey: 'unit_of_measure' });
+Product.belongsTo(Unit, { foreignKey: 'unit_of_measure' });
 
 Product.hasOne(GlobalStock, { foreignKey: 'ProductId' });
 GlobalStock.belongsTo(Product, { foreignKey: 'ProductId' });
@@ -129,5 +133,6 @@ module.exports = {
   Customer,
   CashRegister,
   CashSession,
-  AuditLog
+  AuditLog,
+  Unit
 };

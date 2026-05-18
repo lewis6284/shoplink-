@@ -188,7 +188,10 @@ exports.getAll = async (req, res, next) => {
   try {
     const query = { ...req.query };
     if (req.shopId) {
-      query.ShopId = req.shopId;
+      const { Op } = require('sequelize');
+      query.ShopId = {
+        [Op.or]: [req.shopId, null]
+      };
     }
     const records = await ProductService.getAll(query);
     return ApiResponse.success(res, records);

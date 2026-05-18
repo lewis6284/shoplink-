@@ -13,7 +13,7 @@ const ExpenseCategory = sequelize.define('ExpenseCategory', {
   }
 }, {
   tableName: 'expense_categories',
-  timestamps: false
+  timestamps: true
 });
 
 module.exports = ExpenseCategory;

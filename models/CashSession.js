@@ -40,7 +40,7 @@ const CashSession = sequelize.define('CashSession', {
   }
 }, {
   tableName: 'CashSessions',
-  timestamps: false
+  timestamps: true
 });
 
 CashSession.belongsTo(CashRegister, { foreignKey: 'CashRegisterId' });

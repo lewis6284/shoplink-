@@ -25,7 +25,7 @@ const Stock = sequelize.define('Stock', {
   }
 }, {
   tableName: 'Stocks',
-  timestamps: false,
+  timestamps: true,
   indexes: [
     {
       unique: true,

@@ -17,10 +17,22 @@ const sequelize = new Sequelize(
     },
     define: {
       timestamps: true,
-      underscored: false // Matches the user's SQL schema (e.g. CategoryId, createdAt)
+      underscored: false, // Matches the user's SQL schema (e.g. CategoryId, createdAt)
+      paranoid: true
     }
   }
 );
+
+// --- ⚙️ GLOBAL HOOK TO AUTOMATICALLY PREFIX EVERY TABLE NAME ---
+sequelize.addHook('afterDefine', (model) => {
+  const PREFIX = 'shop_pwa_';
+  if (model.tableName && !model.tableName.startsWith(PREFIX)) {
+    model.tableName = `${PREFIX}${model.tableName.toLowerCase()}`;
+  }
+  if (model.options && model.options.tableName && !model.options.tableName.startsWith(PREFIX)) {
+    model.options.tableName = `${PREFIX}${model.options.tableName.toLowerCase()}`;
+  }
+});
 
 const connectDB = async () => {
   try {

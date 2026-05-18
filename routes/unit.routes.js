@@ -9,8 +9,8 @@ router.use(authMiddleware);
 
 router.get('/', UnitController.getAll);
 router.get('/:id', UnitController.getById);
-router.post('/', roleMiddleware(['manager']), UnitController.create);
-router.patch('/:id', roleMiddleware(['manager']), UnitController.update);
-router.delete('/:id', roleMiddleware(['owner']), UnitController.delete);
+router.post('/', roleMiddleware(['owner', 'manager']), UnitController.create);
+router.patch('/:id', roleMiddleware(['owner', 'manager']), UnitController.update);
+router.delete('/:id', roleMiddleware(['owner', 'manager']), UnitController.delete);
 
 module.exports = router;
