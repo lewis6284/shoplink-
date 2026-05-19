@@ -12,7 +12,7 @@ const Sale = sequelize.define('Sale', {
     unique: true
   },
   status: {
-    type: DataTypes.ENUM('COMPLETED', 'CANCELLED'),
+    type: DataTypes.ENUM('COMPLETED', 'CANCELLED', 'PENDING_APPROVAL'),
     defaultValue: 'COMPLETED'
   },
   paymentMethod: {

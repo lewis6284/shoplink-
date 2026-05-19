@@ -1,13 +1,28 @@
 const Customer = require('../models/Customer');
 const ApiResponse = require('../utils/response');
 
+const { Op } = require('sequelize');
+
 exports.getAll = async (req, res, next) => {
   try {
-    const query = { ...req.query };
-    if (req.shopId && Customer.getAttributes  && Customer.getAttributes .ShopId) {
+    const { search, ...restQuery } = req.query;
+    const query = { ...restQuery };
+
+    if (req.shopId && Customer.rawAttributes.ShopId) {
       query.ShopId = req.shopId;
     }
-    const records = await Customer.findAll({ where: query });
+
+    if (search) {
+      query[Op.or] = [
+        { full_name: { [Op.like]: `%${search}%` } },
+        { phone: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    const records = await Customer.findAll({ 
+      where: query,
+      order: [['full_name', 'ASC']]
+    });
     return ApiResponse.success(res, records);
   } catch (error) {
     next(error);
@@ -17,7 +32,7 @@ exports.getAll = async (req, res, next) => {
 exports.getById = async (req, res, next) => {
   try {
     const query = { id: req.params.id };
-    if (req.shopId && Customer.getAttributes  && Customer.getAttributes .ShopId) {
+    if (req.shopId && Customer.rawAttributes.ShopId) {
       query.ShopId = req.shopId;
     }
     const records = await Customer.findAll({ where: query });
@@ -33,7 +48,7 @@ exports.getById = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     const data = { ...req.body };
-    if (req.shopId && Customer.getAttributes  && Customer.getAttributes .ShopId) {
+    if (req.shopId && Customer.rawAttributes.ShopId) {
       data.ShopId = req.shopId;
     }
     const record = await Customer.create(data);

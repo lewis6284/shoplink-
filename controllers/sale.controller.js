@@ -21,6 +21,16 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       let taxAmount = 0;
       const processedItems = [];
 
+      // Check if Customer is a partner
+      let isPartner = false;
+      if (saleData.CustomerId) {
+        const Customer = require('../models/Customer');
+        const customer = await Customer.findByPk(saleData.CustomerId, { transaction });
+        if (customer && customer.customer_type === 'partner') {
+          isPartner = true;
+        }
+      }
+
       for (const item of items) {
         const product = await Product.findByPk(item.ProductId, { transaction });
         if (!product) throw new Error(`Product ${item.ProductId} not found`);
@@ -36,7 +46,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         }
 
         // Apply Pricing Engine
-        const pricing = PricingEngine.calculate(product, saleData.customerType || 'retail', item.quantity);
+        const pricing = await PricingEngine.calculate(product, saleData.customerType || 'retail', item.quantity, shopId);
         
         processedItems.push({
           ProductId: item.ProductId,
@@ -56,6 +66,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       }
 
       const totalAmount = subtotal + taxAmount;
+      const finalStatus = isPartner ? 'PENDING_APPROVAL' : 'COMPLETED';
 
       // 2. Create Sale Header
       const cashSessionId = saleData.CashSessionId || req?.cashSessionId || req?.headers?.['x-cash-session-id'] || null;
@@ -69,7 +80,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         tax_amount: taxAmount,
         tax_type: saleTaxType,
         total_amount: totalAmount,
-        status: 'COMPLETED'
+        status: finalStatus
       }, { transaction });
 
       // 3. Create Sale Items
@@ -82,39 +93,53 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         SaleId: sale.id
       })), { transaction });
 
-      // 4. Generate Auto Invoice in Facture format (e.g. FAC-L421Z)
-      const nextSequence = (await Invoice.count({ transaction })) + 1;
-      const scrambledCode = crypto.encodeInvoiceId(nextSequence);
-      const invoiceNumber = `FAC-${scrambledCode}`;
-      const now = new Date();
-      const invoice = await Invoice.create({
-        SaleId: sale.id,
-        ShopId: shopId,
-        UserId: userId,
-        invoice_number: invoiceNumber,
-        subtotal,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
-        tax_type: processedItems[0]?.taxType || 'NTVA',
-        status: 'GENERATED',
-        createdAt: now,
-        updatedAt: now
-      }, { transaction });
+      let invoice = null;
+      let invoiceNumber = null;
 
-      // 5. Update Shop Financials
-      await FinancialService.recordSale(shopId, totalAmount, taxAmount, processedItems[0]?.taxType);
+      if (!isPartner) {
+        // 4. Generate Auto Invoice in Facture format (e.g. FAC-L421Z)
+        const nextSequence = (await Invoice.count({ transaction })) + 1;
+        const scrambledCode = crypto.encodeInvoiceId(nextSequence);
+        invoiceNumber = `FAC-${scrambledCode}`;
+        const now = new Date();
+        invoice = await Invoice.create({
+          SaleId: sale.id,
+          ShopId: shopId,
+          UserId: userId,
+          invoice_number: invoiceNumber,
+          subtotal,
+          tax_amount: taxAmount,
+          total_amount: totalAmount,
+          tax_type: processedItems[0]?.taxType || 'NTVA',
+          status: 'GENERATED',
+          createdAt: now,
+          updatedAt: now
+        }, { transaction });
 
-      // 6. Audit Log
-      await AuditService.log({
-        userId,
-        shopId,
-        actionType: 'SALE_CREATE',
-        tableName: 'Sales',
-        newValues: { saleId: sale.id, invoiceNumber, CashSessionId: cashSessionId }
-      });
+        // 5. Update Shop Financials
+        await FinancialService.recordSale(shopId, totalAmount, taxAmount, processedItems[0]?.taxType);
+
+        // 6. Audit Log
+        await AuditService.log({
+          userId,
+          shopId,
+          actionType: 'SALE_CREATE',
+          tableName: 'Sales',
+          newValues: { saleId: sale.id, invoiceNumber, CashSessionId: cashSessionId }
+        });
+      } else {
+        // Audit Log for pending partner sale
+        await AuditService.log({
+          userId,
+          shopId,
+          actionType: 'SALE_PENDING_APPROVAL',
+          tableName: 'Sales',
+          newValues: { saleId: sale.id, customerId: saleData.CustomerId, totalAmount }
+        });
+      }
 
       await transaction.commit();
-      return { sale, invoice };
+      return { sale, invoice, isPartner };
     } catch (error) {
       await transaction.rollback();
       console.error('🔥 POS Transaction Failed:', error.message);
@@ -239,6 +264,146 @@ const { Op } = require('sequelize');
       const { reason } = req.body;
       const sale = await exports.cancelSale(req.params.id, req.user.id, reason, req);
       return ApiResponse.success(res, sale, 'Sale cancelled successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.approveSale = async (saleId, userId, req = null) => {
+    const transaction = await sequelize.transaction();
+    try {
+      const sale = await Sale.findByPk(saleId, {
+        include: [{ model: SaleItem }],
+        transaction
+      });
+      if (!sale) throw new Error('Sale not found');
+      if (sale.status !== 'PENDING_APPROVAL') {
+        throw new Error('Only pending approval sales can be approved');
+      }
+
+      sale.status = 'COMPLETED';
+      await sale.save({ transaction });
+
+      // Generate Auto Invoice in Facture format
+      const nextSequence = (await Invoice.count({ transaction })) + 1;
+      const scrambledCode = crypto.encodeInvoiceId(nextSequence);
+      const invoiceNumber = `FAC-${scrambledCode}`;
+      const now = new Date();
+      const invoice = await Invoice.create({
+        SaleId: sale.id,
+        ShopId: sale.ShopId,
+        UserId: sale.UserId,
+        invoice_number: invoiceNumber,
+        subtotal: sale.subtotal,
+        tax_amount: sale.tax_amount,
+        total_amount: sale.total_amount,
+        tax_type: sale.tax_type,
+        status: 'GENERATED',
+        createdAt: now,
+        updatedAt: now
+      }, { transaction });
+
+      // Update Shop Financials
+      await FinancialService.recordSale(sale.ShopId, Number(sale.total_amount), Number(sale.tax_amount), sale.tax_type);
+
+      // Audit Log for approval
+      await AuditService.log({
+        userId,
+        shopId: sale.ShopId,
+        actionType: 'SALE_APPROVE',
+        tableName: 'Sales',
+        oldValues: { status: 'PENDING_APPROVAL' },
+        newValues: { status: 'COMPLETED', saleId: sale.id, invoiceNumber }
+      });
+
+      await transaction.commit();
+      return { sale, invoice };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  };
+
+  exports.rejectSale = async (saleId, userId, reason, req = null) => {
+    const transaction = await sequelize.transaction();
+    try {
+      const sale = await Sale.findByPk(saleId, {
+        include: [{ model: SaleItem }],
+        transaction
+      });
+      if (!sale) throw new Error('Sale not found');
+      if (sale.status !== 'PENDING_APPROVAL') {
+        throw new Error('Only pending approval sales can be rejected');
+      }
+
+      sale.status = 'CANCELLED';
+      sale.cancel_reason = reason || 'Rejected by Owner';
+      await sale.save({ transaction });
+
+      // Restore Stock
+      for (const item of sale.SaleItems) {
+        const stock = await Stock.findOne({
+          where: { ProductId: item.ProductId, ShopId: sale.ShopId },
+          transaction
+        });
+        if (stock) {
+          stock.quantity = Number(stock.quantity) + Number(item.quantity);
+          await stock.save({ transaction });
+        }
+      }
+
+      // Audit Log for rejection
+      await AuditService.log({
+        userId,
+        shopId: sale.ShopId,
+        actionType: 'SALE_REJECT',
+        tableName: 'Sales',
+        oldValues: { status: 'PENDING_APPROVAL' },
+        newValues: { status: 'CANCELLED', reason }
+      });
+
+      await transaction.commit();
+      return sale;
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  };
+
+  exports.getPendingApproval = async (req, res, next) => {
+    try {
+      const where = { status: 'PENDING_APPROVAL' };
+      if (req.shopId) where.ShopId = req.shopId;
+
+      const sales = await Sale.findAll({
+        where,
+        include: [
+          { model: Customer, required: false },
+          { model: User, required: false, attributes: ['id', 'full_name', 'email'] },
+          { model: SaleItem, include: [{ model: Product, required: false }] }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+      return ApiResponse.success(res, sales);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.approve = async (req, res, next) => {
+    try {
+      const result = await exports.approveSale(req.params.id, req.user.id, req);
+      return ApiResponse.success(res, result, 'Sale approved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.reject = async (req, res, next) => {
+    try {
+      const { reason } = req.body;
+      const sale = await exports.rejectSale(req.params.id, req.user.id, reason, req);
+      return ApiResponse.success(res, sale, 'Sale rejected successfully');
     } catch (error) {
       next(error);
     }
