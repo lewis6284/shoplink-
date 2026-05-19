@@ -717,13 +717,23 @@ const ApiResponse = require('../utils/response');
     try {
       const AuditLog = require('../models/AuditLog');
       const User = require('../models/User');
-      const { shop_id } = req.query;
+      const { shop_id, start_date, end_date } = req.query;
       
       const where = {};
       if (req.user.role !== 'owner') {
         where.shopId = req.user.ShopId;
       } else if (shop_id) {
         where.shopId = shop_id;
+      }
+
+      if (start_date && end_date) {
+        const { Op } = require('sequelize');
+        where.createdAt = {
+          [Op.between]: [
+            new Date(start_date + 'T00:00:00.000Z'),
+            new Date(end_date + 'T23:59:59.999Z')
+          ]
+        };
       }
 
       const logs = await AuditLog.findAll({
