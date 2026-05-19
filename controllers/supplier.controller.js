@@ -4,7 +4,7 @@ const ApiResponse = require('../utils/response');
 exports.getAll = async (req, res, next) => {
   try {
     const query = { ...req.query };
-    if (req.shopId && Supplier.getAttributes  && Supplier.getAttributes .ShopId) {
+    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
       query.ShopId = req.shopId;
     }
     const records = await Supplier.findAll({ where: query });
@@ -17,7 +17,7 @@ exports.getAll = async (req, res, next) => {
 exports.getById = async (req, res, next) => {
   try {
     const query = { id: req.params.id };
-    if (req.shopId && Supplier.getAttributes  && Supplier.getAttributes .ShopId) {
+    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
       query.ShopId = req.shopId;
     }
     const records = await Supplier.findAll({ where: query });
@@ -33,7 +33,7 @@ exports.getById = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     const data = { ...req.body };
-    if (req.shopId && Supplier.getAttributes  && Supplier.getAttributes .ShopId) {
+    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
       data.ShopId = req.shopId;
     }
     const record = await Supplier.create(data);
