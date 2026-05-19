@@ -61,7 +61,13 @@ const StockTransferService = {
   async approve(transferId, userId, req = null) {
     const transaction = await sequelize.transaction();
     try {
-      const transfer = await StockTransfer.findByPk(transferId, { transaction });
+      const transfer = await StockTransfer.findByPk(transferId, { 
+        include: [
+          { model: Shop, as: 'FromShop', attributes: ['name'] },
+          { model: Shop, as: 'ToShop', attributes: ['name'] }
+        ],
+        transaction 
+      });
       if (!transfer || !['PENDING', 'APPROVED', 'IN_TRANSIT'].includes(transfer.status)) {
         throw new Error('Transfer must be in PENDING, APPROVED, or IN_TRANSIT state to complete');
       }
@@ -114,7 +120,12 @@ const StockTransferService = {
         actionType: 'TRANSFER_COMPLETE',
         tableName: 'StockTransfers',
         oldValues: { status: transfer.status },
-        newValues: { status: 'RECEIVED', quantity: transfer.Quantity }
+        newValues: { 
+          status: 'RECEIVED', 
+          quantity: transfer.Quantity,
+          from: transfer.FromShop?.name,
+          to: transfer.ToShop?.name
+        }
       });
       return transfer;
     } catch (error) {
@@ -124,7 +135,12 @@ const StockTransferService = {
   },
 
   async dispatch(transferId, userId, req = null) {
-    const transfer = await StockTransfer.findByPk(transferId);
+    const transfer = await StockTransfer.findByPk(transferId, {
+      include: [
+        { model: Shop, as: 'FromShop', attributes: ['name'] },
+        { model: Shop, as: 'ToShop', attributes: ['name'] }
+      ]
+    });
     if (!transfer || transfer.status !== 'APPROVED') throw new Error('Transfer must be APPROVED first');
 
     await transfer.update({ status: 'IN_TRANSIT' });
@@ -133,7 +149,12 @@ const StockTransferService = {
       actionType: 'TRANSFER_DISPATCH',
       tableName: 'StockTransfers',
       oldValues: { status: 'APPROVED' },
-      newValues: { status: 'IN_TRANSIT' }
+      newValues: { 
+        status: 'IN_TRANSIT', 
+        quantity: transfer.Quantity,
+        from: transfer.FromShop?.name,
+        to: transfer.ToShop?.name
+      }
     });
     return transfer;
   },
@@ -141,7 +162,13 @@ const StockTransferService = {
   async receive(transferId, userId, req = null) {
     const transaction = await sequelize.transaction();
     try {
-      const transfer = await StockTransfer.findByPk(transferId, { transaction });
+      const transfer = await StockTransfer.findByPk(transferId, { 
+        include: [
+          { model: Shop, as: 'FromShop', attributes: ['name'] },
+          { model: Shop, as: 'ToShop', attributes: ['name'] }
+        ],
+        transaction 
+      });
       if (!transfer || (transfer.status !== 'IN_TRANSIT' && transfer.status !== 'APPROVED')) {
         throw new Error('Transfer must be APPROVED or IN_TRANSIT');
       }
@@ -186,7 +213,12 @@ const StockTransferService = {
         actionType: 'TRANSFER_RECEIVE',
         tableName: 'StockTransfers',
         oldValues: { status: transfer.status },
-        newValues: { status: 'RECEIVED' }
+        newValues: { 
+          status: 'RECEIVED', 
+          quantity: transfer.Quantity,
+          from: transfer.FromShop?.name,
+          to: transfer.ToShop?.name
+        }
       });
 
       return transfer;
@@ -199,7 +231,13 @@ const StockTransferService = {
   async cancel(transferId, userId, req = null) {
     const transaction = await sequelize.transaction();
     try {
-      const transfer = await StockTransfer.findByPk(transferId, { transaction });
+      const transfer = await StockTransfer.findByPk(transferId, { 
+        include: [
+          { model: Shop, as: 'FromShop', attributes: ['name'] },
+          { model: Shop, as: 'ToShop', attributes: ['name'] }
+        ],
+        transaction 
+      });
       if (!transfer || (transfer.status !== 'PENDING' && transfer.status !== 'APPROVED')) {
         throw new Error('Cannot cancel transfer in current state');
       }
@@ -223,7 +261,12 @@ const StockTransferService = {
         actionType: 'TRANSFER_CANCEL',
         tableName: 'StockTransfers',
         oldValues: { status: transfer.status },
-        newValues: { status: 'CANCELLED' }
+        newValues: { 
+          status: 'CANCELLED', 
+          quantity: transfer.Quantity,
+          from: transfer.FromShop?.name,
+          to: transfer.ToShop?.name
+        }
       });
       return transfer;
     } catch (error) {
