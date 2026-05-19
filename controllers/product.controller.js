@@ -253,7 +253,19 @@ exports.delete = async (req, res, next) => {
     if (!existing) {
       return ApiResponse.error(res, 'Record not found', 404);
     }
+    const oldValues = existing.toJSON();
     await existing.destroy();
+
+    if (req.user?.id) {
+      await AuditService.log({
+        userId: req.user.id,
+        shopId: req.shopId,
+        actionType: 'PRODUCT_DELETE',
+        tableName: 'Products',
+        oldValues
+      });
+    }
+
     return ApiResponse.success(res, null, 'Deleted successfully');
   } catch (error) {
     next(error);
