@@ -2,6 +2,7 @@
 // --- SERVICE LOGIC INLINED ---
 const { sequelize } = require('../config/database');
 const Sale = require('../models/Sale');
+const SaleItem = require('../models/SaleItem');
 const Expense = require('../models/Expense');
 const Shop = require('../models/Shop');
 const Product = require('../models/Product');
@@ -23,7 +24,7 @@ const DashboardService = {
     const [
       totalShops,
       todaySales,
-      totalExpenses,
+      todayGrossProfitRaw,
       lowStockProducts,
       recentLogs,
       topShopRaw
@@ -35,10 +36,22 @@ const DashboardService = {
           createdAt: { [Op.between]: [todayStart, todayEnd] }
         } 
       }),
-      Expense.sum('amount', {
-        where: {
-          createdAt: { [Op.between]: [todayStart, todayEnd] }
-        }
+      SaleItem.findAll({
+        attributes: [
+          [
+            fn('SUM', sequelize.literal('subTotal - (quantity * unitCostSnapshot)')),
+            'grossProfit'
+          ]
+        ],
+        include: [{
+          model: Sale,
+          where: {
+            status: 'COMPLETED',
+            createdAt: { [Op.between]: [todayStart, todayEnd] }
+          },
+          attributes: []
+        }],
+        raw: true
       }),
       Stock.count({ where: { quantity: { [Op.lt]: 10 } } }),
       AuditLog.findAll({
@@ -61,13 +74,13 @@ const DashboardService = {
       })
     ]);
 
-    // Calculate Net Profit (simplified for now)
-    const netProfit = (todaySales || 0) - (totalExpenses || 0);
+    // Calculate Gross Profit (based on product purchase cost snapshotted during sale)
+    const netProfit = parseFloat(todayGrossProfitRaw[0]?.grossProfit || 0);
 
     return {
       totalShops,
       todaySales: todaySales || 0,
-      totalExpenses: totalExpenses || 0,
+      totalExpenses: 0,
       netProfit,
       lowStockCount: lowStockProducts || 0,
       recentLogs,
@@ -93,7 +106,7 @@ const DashboardService = {
 
     const [
       todaySales,
-      totalExpenses,
+      todayGrossProfitRaw,
       lowStockCount,
       topProducts,
       cashierPerformances
@@ -105,11 +118,23 @@ const DashboardService = {
           createdAt: { [Op.between]: [todayStart, todayEnd] }
         } 
       }),
-      Expense.sum('amount', {
-        where: {
-          ShopId: shopId,
-          createdAt: { [Op.between]: [todayStart, todayEnd] }
-        }
+      SaleItem.findAll({
+        attributes: [
+          [
+            fn('SUM', sequelize.literal('subTotal - (quantity * unitCostSnapshot)')),
+            'grossProfit'
+          ]
+        ],
+        include: [{
+          model: Sale,
+          where: {
+            ShopId: shopId,
+            status: 'COMPLETED',
+            createdAt: { [Op.between]: [todayStart, todayEnd] }
+          },
+          attributes: []
+        }],
+        raw: true
       }),
       Stock.count({ 
         where: { 
@@ -137,10 +162,12 @@ const DashboardService = {
       `, { replacements: [shopId, todayStart, todayEnd], type: sequelize.QueryTypes.SELECT })
     ]);
 
+    const netProfit = parseFloat(todayGrossProfitRaw[0]?.grossProfit || 0);
+
     return {
       todaySales: todaySales || 0,
-      totalExpenses: totalExpenses || 0,
-      netProfit: (todaySales || 0) - (totalExpenses || 0),
+      totalExpenses: 0,
+      netProfit,
       lowStockCount: lowStockCount || 0,
       topProducts,
       cashierPerformances
