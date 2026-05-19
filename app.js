@@ -32,6 +32,13 @@ app.get(['/health', '/shoplink/health'], (req, res) => {
 // ─── Root Redirect — always send bare / to /shoplink/ ────────────────────────
 app.get('/', (req, res) => res.redirect(301, '/shoplink/'));
 
+// ─── Serve Uploaded Files ─────────────────────────────────────────────────────
+// Multer saves to public/uploads/; serve under both prefixes so that:
+//   - stored DB path  "/uploads/file.jpg"  works via /shoplink/uploads/file.jpg
+//   - local dev path  "/uploads/file.jpg"  also works directly
+const uploadsDir = path.resolve(__dirname, 'public', 'uploads');
+app.use(['/shoplink/uploads', '/uploads'], express.static(uploadsDir));
+
 // ─── Serve Frontend Static Assets under /shoplink/ ───────────────────────────
 // Files live in public/shoplink/, Vite built them with base='/shoplink/'
 // so asset URLs are already /shoplink/assets/... — this maps them correctly.
