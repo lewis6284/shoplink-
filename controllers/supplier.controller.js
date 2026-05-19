@@ -4,9 +4,6 @@ const ApiResponse = require('../utils/response');
 exports.getAll = async (req, res, next) => {
   try {
     const query = { ...req.query };
-    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
-      query.ShopId = req.shopId;
-    }
     const records = await Supplier.findAll({ where: query });
     return ApiResponse.success(res, records);
   } catch (error) {
@@ -17,9 +14,6 @@ exports.getAll = async (req, res, next) => {
 exports.getById = async (req, res, next) => {
   try {
     const query = { id: req.params.id };
-    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
-      query.ShopId = req.shopId;
-    }
     const records = await Supplier.findAll({ where: query });
     if (!records || records.length === 0) {
       return ApiResponse.error(res, 'Record not found', 404);
@@ -33,9 +27,6 @@ exports.getById = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     const data = { ...req.body };
-    if (req.shopId && Supplier.rawAttributes && Supplier.rawAttributes.ShopId) {
-      data.ShopId = req.shopId;
-    }
     const record = await Supplier.create(data);
     return ApiResponse.success(res, record, 'Created successfully', 201);
   } catch (error) {

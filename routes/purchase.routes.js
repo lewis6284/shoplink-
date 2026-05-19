@@ -11,6 +11,6 @@ router.use(shopMiddleware);
 
 router.get('/', PurchaseController.getAll);
 router.get('/:id', PurchaseController.getById);
-router.post('/', roleMiddleware(['manager']), PurchaseController.create);
+router.post('/', roleMiddleware(['owner', 'manager']), PurchaseController.create);
 
 module.exports = router;
