@@ -37,12 +37,7 @@ const DashboardService = {
         } 
       }),
       SaleItem.findAll({
-        attributes: [
-          [
-            fn('SUM', sequelize.literal('subTotal - (quantity * unitCostSnapshot)')),
-            'grossProfit'
-          ]
-        ],
+        attributes: ['quantity', 'subTotal', 'unitCostSnapshot'],
         include: [{
           model: Sale,
           where: {
@@ -75,7 +70,12 @@ const DashboardService = {
     ]);
 
     // Calculate Gross Profit (based on product purchase cost snapshotted during sale)
-    const netProfit = parseFloat(todayGrossProfitRaw[0]?.grossProfit || 0);
+    const netProfit = todayGrossProfitRaw.reduce((sum, item) => {
+      const qty = parseFloat(item.quantity || 0);
+      const sub = parseFloat(item.subTotal || 0);
+      const cost = parseFloat(item.unitCostSnapshot || 0);
+      return sum + (sub - (qty * cost));
+    }, 0);
 
     return {
       totalShops,
@@ -119,12 +119,7 @@ const DashboardService = {
         } 
       }),
       SaleItem.findAll({
-        attributes: [
-          [
-            fn('SUM', sequelize.literal('subTotal - (quantity * unitCostSnapshot)')),
-            'grossProfit'
-          ]
-        ],
+        attributes: ['quantity', 'subTotal', 'unitCostSnapshot'],
         include: [{
           model: Sale,
           where: {
@@ -143,7 +138,7 @@ const DashboardService = {
         } 
       }),
       sequelize.query(`
-        SELECT p.name, SUM(si.quantity) as soldQuantity, SUM(si.sub_total) as revenue
+        SELECT p.name, SUM(si.quantity) as soldQuantity, SUM(si.subTotal) as revenue
         FROM SaleItems si
         JOIN Products p ON si.ProductId = p.id
         JOIN Sales s ON si.SaleId = s.id
@@ -162,7 +157,12 @@ const DashboardService = {
       `, { replacements: [shopId, todayStart, todayEnd], type: sequelize.QueryTypes.SELECT })
     ]);
 
-    const netProfit = parseFloat(todayGrossProfitRaw[0]?.grossProfit || 0);
+    const netProfit = todayGrossProfitRaw.reduce((sum, item) => {
+      const qty = parseFloat(item.quantity || 0);
+      const sub = parseFloat(item.subTotal || 0);
+      const cost = parseFloat(item.unitCostSnapshot || 0);
+      return sum + (sub - (qty * cost));
+    }, 0);
 
     return {
       todaySales: todaySales || 0,

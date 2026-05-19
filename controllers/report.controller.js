@@ -396,7 +396,7 @@ const ReportService = {
       attributes: [
         'ProductId',
         [fn('SUM', col('SaleItem.quantity')), 'total_sold'],
-        [fn('SUM', col('SaleItem.sub_total')), 'total_revenue']
+        [fn('SUM', col('SaleItem.subTotal')), 'total_revenue']
       ],
       include: [
         { model: Product, attributes: ['id', 'name'] },
