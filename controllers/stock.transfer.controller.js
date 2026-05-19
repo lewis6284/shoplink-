@@ -48,7 +48,12 @@ const StockTransferService = {
       status // Can be DRAFT or PENDING
     });
 
-    await AuditService.log(userId, 'TRANSFER_CREATE', 'StockTransfers', transfer.id, null, transfer.toJSON(), req);
+    await AuditService.log({
+      userId: userId,
+      actionType: 'TRANSFER_CREATE',
+      tableName: 'StockTransfers',
+      newValues: transfer.toJSON()
+    });
     
     return transfer;
   },
@@ -104,8 +109,13 @@ const StockTransferService = {
       }, { transaction });
 
       await transaction.commit();
-      await AuditService.log(userId, 'TRANSFER_COMPLETE', 'StockTransfers', transferId,
-        { status: transfer.status }, { status: 'RECEIVED', quantity: transfer.Quantity }, req);
+      await AuditService.log({
+        userId: userId,
+        actionType: 'TRANSFER_COMPLETE',
+        tableName: 'StockTransfers',
+        oldValues: { status: transfer.status },
+        newValues: { status: 'RECEIVED', quantity: transfer.Quantity }
+      });
       return transfer;
     } catch (error) {
       await transaction.rollback();
@@ -118,7 +128,13 @@ const StockTransferService = {
     if (!transfer || transfer.status !== 'APPROVED') throw new Error('Transfer must be APPROVED first');
 
     await transfer.update({ status: 'IN_TRANSIT' });
-    await AuditService.log(userId, 'TRANSFER_DISPATCH', 'StockTransfers', transferId, { status: 'APPROVED' }, { status: 'IN_TRANSIT' }, req);
+    await AuditService.log({
+      userId: userId,
+      actionType: 'TRANSFER_DISPATCH',
+      tableName: 'StockTransfers',
+      oldValues: { status: 'APPROVED' },
+      newValues: { status: 'IN_TRANSIT' }
+    });
     return transfer;
   },
 
@@ -165,7 +181,13 @@ const StockTransferService = {
       }, { transaction });
 
       await transaction.commit();
-      await AuditService.log(userId, 'TRANSFER_RECEIVE', 'StockTransfers', transferId, { status: transfer.status }, { status: 'RECEIVED' }, req);
+      await AuditService.log({
+        userId: userId,
+        actionType: 'TRANSFER_RECEIVE',
+        tableName: 'StockTransfers',
+        oldValues: { status: transfer.status },
+        newValues: { status: 'RECEIVED' }
+      });
 
       return transfer;
     } catch (error) {
@@ -196,7 +218,13 @@ const StockTransferService = {
 
       await transfer.update({ status: 'CANCELLED' }, { transaction });
       await transaction.commit();
-      await AuditService.log(userId, 'TRANSFER_CANCEL', 'StockTransfers', transferId, { status: transfer.status }, { status: 'CANCELLED' }, req);
+      await AuditService.log({
+        userId: userId,
+        actionType: 'TRANSFER_CANCEL',
+        tableName: 'StockTransfers',
+        oldValues: { status: transfer.status },
+        newValues: { status: 'CANCELLED' }
+      });
       return transfer;
     } catch (error) {
       await transaction.rollback();

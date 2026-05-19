@@ -134,15 +134,13 @@ const { sequelize } = require('../config/database');
         await movement.update({ localId, deviceId }, { transaction });
       }
 
-      await AuditService.log(
-        req.user.id,
-        'STOCK_ADDITION',
-        'Stocks',
-        stock.id,
-        null,
-        { quantity, shopId, productId: product_id },
-        req
-      );
+      await AuditService.log({
+        userId: req.user.id,
+        actionType: 'STOCK_ADDITION',
+        tableName: 'Stocks',
+        oldValues: null,
+        newValues: { quantity, shopId, productId: product_id, stockId: stock.id }
+      });
 
       await transaction.commit();
       return ApiResponse.success(res, stock, 'Stock added successfully');
@@ -196,15 +194,13 @@ const { sequelize } = require('../config/database');
         await movement.update({ localId, deviceId }, { transaction });
       }
 
-      await AuditService.log(
-        req.user.id,
-        'STOCK_ADJUSTMENT',
-        'Stocks',
-        stock.id,
-        { old_quantity: currentQty },
-        { new_quantity: quantity, reason: actualReason },
-        req
-      );
+      await AuditService.log({
+        userId: req.user.id,
+        actionType: 'STOCK_ADJUSTMENT',
+        tableName: 'Stocks',
+        oldValues: { old_quantity: currentQty },
+        newValues: { new_quantity: quantity, reason: actualReason, stockId: stock.id }
+      });
 
       await transaction.commit();
       return ApiResponse.success(res, stock, 'Stock adjusted successfully');
