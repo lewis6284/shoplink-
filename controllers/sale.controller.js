@@ -21,13 +21,12 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       let taxAmount = 0;
       const processedItems = [];
 
-      // Check if Customer is a partner
-      let isPartner = false;
+      let requiresApproval = false;
       if (saleData.CustomerId) {
         const Customer = require('../models/Customer');
         const customer = await Customer.findByPk(saleData.CustomerId, { transaction });
-        if (customer && customer.customer_type === 'partner') {
-          isPartner = true;
+        if (customer && (customer.customer_type === 'partner' || customer.customer_type === 'wholesale')) {
+          requiresApproval = true;
         }
       }
 
@@ -66,7 +65,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       }
 
       const totalAmount = subtotal + taxAmount;
-      const finalStatus = isPartner ? 'PENDING_APPROVAL' : 'COMPLETED';
+      const finalStatus = requiresApproval ? 'PENDING_APPROVAL' : 'COMPLETED';
 
       // 2. Create Sale Header
       const cashSessionId = saleData.CashSessionId || req?.cashSessionId || req?.headers?.['x-cash-session-id'] || null;
@@ -96,7 +95,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       let invoice = null;
       let invoiceNumber = null;
 
-      if (!isPartner) {
+      if (!requiresApproval) {
         // 4. Generate Auto Invoice in Facture format (e.g. FAC-L421Z)
         const nextSequence = (await Invoice.count({ transaction })) + 1;
         const scrambledCode = crypto.encodeInvoiceId(nextSequence);
@@ -110,7 +109,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
           subtotal,
           tax_amount: taxAmount,
           total_amount: totalAmount,
-          tax_type: processedItems[0]?.taxType || 'NTVA',
+          tax_type: processedItems[0]?.taxType === 'TVA' ? 'TVA' : 'NTVA',
           status: 'GENERATED',
           createdAt: now,
           updatedAt: now
@@ -139,7 +138,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       }
 
       await transaction.commit();
-      return { sale, invoice, isPartner };
+      return { sale, invoice, isPartner: requiresApproval };
     } catch (error) {
       await transaction.rollback();
       console.error('🔥 POS Transaction Failed:', error.message);
