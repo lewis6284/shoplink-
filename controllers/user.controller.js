@@ -1,4 +1,4 @@
-const { User, Shop } = require('../db');
+const { User, Shop } = require('../config/db');
 const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {

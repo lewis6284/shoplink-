@@ -1,5 +1,5 @@
 require('dotenv').config();
-require('./db'); // Preload all models so associations are registered
+require('./config/db'); // Preload all models so associations are registered
 
 const app = require('./app');
 const { connectDB } = require('./config/database');

@@ -1,6 +1,6 @@
 const { sequelize } = require('../config/database');
 // Import all models and associations through the db index to apply prefixes and relationships
-require('../db');
+require('../config/db');
 
 
 const syncDB = async () => {
