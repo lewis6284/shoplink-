@@ -38,15 +38,13 @@ const PurchaseService = {
       }
 
       // 3. Audit Log
-      await AuditService.log(
-        userId,
-        'PURCHASE_CREATED',
-        'Purchases',
-        purchase.id,
-        null,
-        purchase.toJSON(),
-        req
-      );
+      await AuditService.log({
+        userId: userId,
+        actionType: 'PURCHASE_CREATED',
+        tableName: 'Purchases',
+        oldValues: null,
+        newValues: purchase.toJSON()
+      });
 
       await transaction.commit();
       return purchase;
