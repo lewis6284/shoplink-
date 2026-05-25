@@ -33,10 +33,10 @@ app.get(['/health', '/shoplink/health'], (req, res) => {
 app.get('/', (req, res) => res.redirect(301, '/shoplink/'));
 
 // ─── Serve Uploaded Files ─────────────────────────────────────────────────────
-// Multer saves to public/uploads/; serve under both prefixes so that:
-//   - stored DB path  "/uploads/file.jpg"  works via /shoplink/uploads/file.jpg
-//   - local dev path  "/uploads/file.jpg"  also works directly
-const uploadsDir = path.resolve(__dirname, 'public', 'uploads');
+// Multer saves to api/uploads/ (outside public) so upload files are not part of
+// the public frontend assets tree. They are still served via /uploads and
+// /shoplink/uploads paths, but the storage directory is separate.
+const uploadsDir = path.resolve(__dirname, 'uploads');
 app.use(['/shoplink/uploads', '/uploads'], express.static(uploadsDir));
 
 // ─── Serve Frontend Static Assets under /shoplink/ ───────────────────────────
