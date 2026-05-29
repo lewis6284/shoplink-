@@ -125,6 +125,33 @@ const AuthService = {
     const userJson = user.toJSON();
     delete userJson.password_hash;
     return userJson;
+  },
+
+  /**
+   * Change user password
+   */
+  async changePassword(userId, oldPassword, newPassword) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const isMatch = await user.comparePassword(oldPassword);
+    if (!isMatch) {
+      const error = new Error('Incorrect current password');
+      error.status = 400;
+      throw error;
+    }
+
+    user.password_hash = newPassword;
+    user.requires_password_change = false;
+    await user.save();
+
+    const userJson = user.toJSON();
+    delete userJson.password_hash;
+    return userJson;
   }
 };
 
@@ -185,6 +212,12 @@ const ApiResponse = require('../utils/response');
     }
   }
 
-
-
-
+  exports.changePassword = async (req, res, next) => {
+    try {
+      const { oldPassword, newPassword } = req.body;
+      const user = await AuthService.changePassword(req.user.id, oldPassword, newPassword);
+      return ApiResponse.success(res, user, 'Password changed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }

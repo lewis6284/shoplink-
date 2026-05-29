@@ -44,6 +44,10 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   },
+  requires_password_change: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
   last_login: {
     type: DataTypes.DATE
   },
