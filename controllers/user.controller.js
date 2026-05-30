@@ -42,7 +42,9 @@ exports.create = async (req, res, next) => {
     if (req.body.password) {
       data.password_hash = req.body.password;
     }
-    if (req.shopId && User.getAttributes  && User.getAttributes .ShopId) {
+    if (data.role === 'owner') {
+      data.ShopId = null;
+    } else if (req.shopId && User.getAttributes && User.getAttributes.ShopId) {
       data.ShopId = req.shopId;
     }
     const record = await User.create(data);
@@ -72,6 +74,9 @@ exports.update = async (req, res, next) => {
     const data = { ...req.body };
     if (req.body.password) {
       data.password_hash = req.body.password;
+    }
+    if (data.role === 'owner') {
+      data.ShopId = null;
     }
     await existing.update(data);
     return ApiResponse.success(res, existing, 'Updated successfully');
