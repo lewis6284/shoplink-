@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS Products (
   image_url TEXT,
   purchasePrice DECIMAL(15,2),
   sellingPrice DECIMAL(15,2),
+  partnerPrice DECIMAL(15,2),
+  wholesalePrice DECIMAL(15,2),
   tax_type ENUM('TVA','NTVA') DEFAULT 'NTVA',
   tax_rate DECIMAL(5,2) DEFAULT 0,
   CategoryId CHAR(36),

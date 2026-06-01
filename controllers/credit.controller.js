@@ -74,8 +74,23 @@ const ApiResponse = require('../utils/response');
 
   exports.getAll = async (req, res, next) => {
     try {
+      const { search, status } = req.query;
+      const { Op } = require('sequelize');
+
+      const creditWhere = {};
+      if (status) creditWhere.status = status;
+
+      const customerWhere = {};
+      if (search) {
+        customerWhere[Op.or] = [
+          { full_name: { [Op.like]: `%${search}%` } },
+          { phone: { [Op.like]: `%${search}%` } }
+        ];
+      }
+
       const credits = await CustomerCredit.findAll({
-        include: [{ model: Customer, as: 'customer' }],
+        where: creditWhere,
+        include: [{ model: Customer, as: 'customer', where: Object.keys(customerWhere).length ? customerWhere : undefined, required: Object.keys(customerWhere).length > 0 }],
         order: [['createdAt', 'DESC']]
       });
       return ApiResponse.success(res, credits);
@@ -104,6 +119,46 @@ const ApiResponse = require('../utils/response');
       const { amount, method } = req.body;
       const credit = await CreditService.payCredit(req.params.id, amount, method);
       return ApiResponse.success(res, credit, 'Payment recorded successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Create a manual debt/credit for a walk-in client (phone-based)
+  exports.createCredit = async (req, res, next) => {
+    try {
+      const { phone, full_name, address, total_credit, due_date, note } = req.body;
+      if (!phone || !total_credit) {
+        return ApiResponse.error(res, 'phone and total_credit are required', 400);
+      }
+
+      // Find or create the debt customer
+      let customer = await Customer.findOne({ where: { phone } });
+      if (!customer) {
+        if (!full_name) return ApiResponse.error(res, 'full_name is required for new debt clients', 400);
+        customer = await Customer.create({
+          full_name,
+          phone,
+          address: address || null,
+          customer_type: 'retail',
+          ShopId: req.shopId || null
+        });
+      }
+
+      const credit = await CreditService.addCredit(
+        customer.id,
+        null, // no linked sale
+        parseFloat(total_credit),
+        due_date || null
+      );
+
+      // attach note if provided (stored in a simple field)
+      if (note) await credit.update({ note });
+
+      const fullCredit = await CustomerCredit.findByPk(credit.id, {
+        include: [{ model: Customer, as: 'customer' }]
+      });
+      return ApiResponse.success(res, fullCredit, 'Debt created successfully', 201);
     } catch (error) {
       next(error);
     }

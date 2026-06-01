@@ -212,18 +212,17 @@ const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { search, ...restQuery } = req.query;
+    const { search, in_stock, ...restQuery } = req.query;
+    const { Op } = require('sequelize');
     const query = { ...restQuery };
 
     if (req.shopId) {
-      const { Op } = require('sequelize');
       query.ShopId = {
         [Op.or]: [req.shopId, null]
       };
     }
 
     if (search) {
-      const { Op } = require('sequelize');
       query[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { barcode: { [Op.like]: `%${search}%` } },
@@ -231,7 +230,28 @@ exports.getAll = async (req, res, next) => {
       ];
     }
 
-    const records = await ProductService.getAll(query);
+    // Build include options; when in_stock=true, require at least 1 stock row with qty > 0
+    let stockIncludeOptions = {};
+    if (in_stock === 'true') {
+      const stockWhere = { quantity: { [Op.gt]: 0 } };
+      if (req.shopId) stockWhere.ShopId = req.shopId;
+      stockIncludeOptions = {
+        model: Stock,
+        where: stockWhere,
+        required: true  // INNER JOIN — excludes products with no in-stock row
+      };
+    }
+
+    const records = await Product.findAll({
+      where: query,
+      include: [
+        { model: Category },
+        { model: Brand },
+        { model: Unit },
+        { model: GlobalStock },
+        in_stock === 'true' ? stockIncludeOptions : { model: Stock }
+      ]
+    });
     return ApiResponse.success(res, records);
   } catch (error) {
     next(error);

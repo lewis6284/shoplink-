@@ -55,6 +55,16 @@ module.exports = {
       } else if (rule.rule_type === 'DISCOUNT_AMOUNT') {
         finalUnitPrice = Math.max(0, originalPrice - Number(rule.rule_value));
       }
+    } else {
+      // Static tier prices on the product (no dynamic rule)
+      const tier = type || 'retail';
+      if (tier === 'wholesale') {
+        const wholesale = Number(product.wholesalePrice);
+        if (wholesale > 0) finalUnitPrice = wholesale;
+      } else if (tier === 'partner') {
+        const partner = Number(product.partnerPrice);
+        if (partner > 0) finalUnitPrice = partner;
+      }
     }
 
     // 2. Calculate Exclusive Taxes

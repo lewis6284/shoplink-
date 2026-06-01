@@ -49,6 +49,14 @@ const Product = sequelize.define('Product', {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0
   },
+  partnerPrice: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true
+  },
+  wholesalePrice: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true
+  },
   tax_type: {
     type: DataTypes.ENUM('TVA', 'HTVA'),
     defaultValue: 'HTVA'

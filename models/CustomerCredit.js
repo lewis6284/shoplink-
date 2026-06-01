@@ -35,6 +35,10 @@ const CustomerCredit = sequelize.define('CustomerCredit', {
   status: {
     type: DataTypes.ENUM('pending', 'partial', 'paid'),
     defaultValue: 'pending'
+  },
+  note: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'customer_credits'
