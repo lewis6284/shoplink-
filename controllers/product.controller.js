@@ -212,15 +212,19 @@ const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { search, in_stock, ...restQuery } = req.query;
+    const { search, in_stock, limit, ...restQuery } = req.query;
     const { Op } = require('sequelize');
     const query = { ...restQuery };
+    const posCatalog = in_stock === 'true';
 
-    // POS / in_stock: availability is per-shop stock, not Product.ShopId alone
-    if (req.shopId && in_stock !== 'true') {
-      query.ShopId = {
-        [Op.or]: [req.shopId, null]
-      };
+    // POS catalog requires an active shop (X-Shop-Id header)
+    if (posCatalog && !req.shopId) {
+      return ApiResponse.success(res, []);
+    }
+
+    // Shop catalog: this shop's products plus global (null ShopId) items
+    if (req.shopId) {
+      query.ShopId = { [Op.or]: [req.shopId, null] };
     }
 
     if (search) {
@@ -231,28 +235,34 @@ exports.getAll = async (req, res, next) => {
       ];
     }
 
-    // Build include options; when in_stock=true, require at least 1 stock row with qty > 0
+    // POS: only products with stock quantity > 0 at the active shop (no default cap)
     let stockIncludeOptions = {};
-    if (in_stock === 'true') {
-      const stockWhere = { quantity: { [Op.gt]: 0 } };
-      if (req.shopId) stockWhere.ShopId = req.shopId;
+    if (posCatalog) {
       stockIncludeOptions = {
         model: Stock,
-        where: stockWhere,
-        required: true  // INNER JOIN — excludes products with no in-stock row
+        where: {
+          ShopId: req.shopId,
+          quantity: { [Op.gt]: 0 }
+        },
+        required: true
       };
     }
 
-    const records = await Product.findAll({
+    const findOptions = {
       where: query,
       include: [
         { model: Category },
         { model: Brand },
         { model: Unit },
         { model: GlobalStock },
-        in_stock === 'true' ? stockIncludeOptions : { model: Stock }
+        posCatalog ? stockIncludeOptions : { model: Stock, ...(req.shopId ? { where: { ShopId: req.shopId }, required: false } : {}) }
       ]
-    });
+    };
+    if (limit) {
+      findOptions.limit = parseInt(limit, 10);
+    }
+
+    const records = await Product.findAll(findOptions);
     return ApiResponse.success(res, records);
   } catch (error) {
     next(error);

@@ -3,7 +3,36 @@
 const CustomerCredit = require('../models/CustomerCredit');
 const CreditPayment = require('../models/CreditPayment');
 const Customer = require('../models/Customer');
+const Sale = require('../models/Sale');
 const { sequelize } = require('../config/database');
+
+/** Resolve whether a credit belongs to the active shop (via sale or customer). */
+async function creditBelongsToShop(credit, shopId) {
+  if (!shopId) return true;
+  if (credit.sale_id) {
+    const sale = await Sale.findByPk(credit.sale_id, { attributes: ['ShopId'] });
+    return sale?.ShopId === shopId;
+  }
+  const customer = credit.customer
+    || await Customer.findByPk(credit.customer_id, { attributes: ['ShopId'] });
+  return customer?.ShopId === shopId;
+}
+
+/** Build shop-scoped filter for credit list queries. */
+async function buildShopCreditFilter(shopId, Op) {
+  const [sales, customers] = await Promise.all([
+    Sale.findAll({ where: { ShopId: shopId }, attributes: ['id'], raw: true }),
+    Customer.findAll({ where: { ShopId: shopId }, attributes: ['id'], raw: true })
+  ]);
+  const saleIds = sales.map((s) => s.id);
+  const customerIds = customers.map((c) => c.id);
+  const orClauses = [];
+  if (saleIds.length) orClauses.push({ sale_id: { [Op.in]: saleIds } });
+  if (customerIds.length) {
+    orClauses.push({ sale_id: null, customer_id: { [Op.in]: customerIds } });
+  }
+  return orClauses.length ? { [Op.or]: orClauses } : { id: null };
+}
 
 const CreditService = {
   async addCredit(customerId, saleId, amount, dueDate, transaction = null) {
@@ -82,6 +111,11 @@ const ApiResponse = require('../utils/response');
       const creditWhere = {};
       if (status) creditWhere.status = status;
 
+      if (req.shopId) {
+        const shopFilter = await buildShopCreditFilter(req.shopId, Op);
+        Object.assign(creditWhere, shopFilter);
+      }
+
       const customerWhere = {};
       if (search) {
         customerWhere[Op.or] = [
@@ -92,7 +126,15 @@ const ApiResponse = require('../utils/response');
 
       const credits = await CustomerCredit.findAll({
         where: creditWhere,
-        include: [{ model: Customer, as: 'customer', where: Object.keys(customerWhere).length ? customerWhere : undefined, required: Object.keys(customerWhere).length > 0 }],
+        include: [
+          {
+            model: Customer,
+            as: 'customer',
+            where: Object.keys(customerWhere).length ? customerWhere : undefined,
+            required: Object.keys(customerWhere).length > 0
+          },
+          { model: Sale, as: 'sale', attributes: ['id', 'ShopId'], required: false }
+        ],
         order: [['createdAt', 'DESC']]
       });
       return ApiResponse.success(res, credits);
@@ -106,10 +148,14 @@ const ApiResponse = require('../utils/response');
       const credit = await CustomerCredit.findByPk(req.params.id, {
         include: [
           { model: Customer, as: 'customer' },
-          { model: CreditPayment, as: 'payments' }
+          { model: CreditPayment, as: 'payments' },
+          { model: Sale, as: 'sale', attributes: ['id', 'ShopId'], required: false }
         ]
       });
       if (!credit) return ApiResponse.error(res, 'Credit record not found', 404);
+      if (req.shopId && !(await creditBelongsToShop(credit, req.shopId))) {
+        return ApiResponse.error(res, 'Credit record not found', 404);
+      }
       return ApiResponse.success(res, credit);
     } catch (error) {
       next(error);
@@ -119,6 +165,13 @@ const ApiResponse = require('../utils/response');
   exports.pay = async (req, res, next) => {
     try {
       const { amount, method } = req.body;
+      const existing = await CustomerCredit.findByPk(req.params.id, {
+        include: [{ model: Customer, as: 'customer' }]
+      });
+      if (!existing) return ApiResponse.error(res, 'Credit record not found', 404);
+      if (req.shopId && !(await creditBelongsToShop(existing, req.shopId))) {
+        return ApiResponse.error(res, 'Credit record not found', 404);
+      }
       const credit = await CreditService.payCredit(req.params.id, amount, method);
       return ApiResponse.success(res, credit, 'Payment recorded successfully');
     } catch (error) {
@@ -133,9 +186,21 @@ const ApiResponse = require('../utils/response');
       if (!phone || !total_credit) {
         return ApiResponse.error(res, 'phone and total_credit are required', 400);
       }
+      if (!req.shopId) {
+        return ApiResponse.error(res, 'Active shop is required (X-Shop-Id header)', 400);
+      }
 
-      // Find or create the debt customer
-      let customer = await Customer.findOne({ where: { phone } });
+      if (sale_id) {
+        const sale = await Sale.findByPk(sale_id, { attributes: ['ShopId'] });
+        if (!sale || sale.ShopId !== req.shopId) {
+          return ApiResponse.error(res, 'Sale not found for this shop', 404);
+        }
+      }
+
+      // Find or create the debt customer for this shop
+      let customer = await Customer.findOne({
+        where: { phone, ShopId: req.shopId }
+      });
       if (!customer) {
         if (!full_name) return ApiResponse.error(res, 'full_name is required for new debt clients', 400);
         customer = await Customer.create({
@@ -143,7 +208,7 @@ const ApiResponse = require('../utils/response');
           phone,
           address: address || null,
           customer_type: 'retail',
-          ShopId: req.shopId || null
+          ShopId: req.shopId
         });
       }
 
