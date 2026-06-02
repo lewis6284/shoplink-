@@ -33,6 +33,8 @@ const CreditService = {
       const credit = await CustomerCredit.findByPk(creditId, { transaction: t });
       if (!credit) throw new Error('Credit record not found');
       if (credit.status === 'paid') throw new Error('Credit already fully paid');
+      if (parseFloat(amount) <= 0) throw new Error('Payment amount must be greater than zero');
+      if (parseFloat(amount) > parseFloat(credit.remaining_credit)) throw new Error('Payment amount exceeds remaining credit');
 
       const paidAmount = parseFloat(amount);
       const newRemaining = parseFloat(credit.remaining_credit) - paidAmount;
