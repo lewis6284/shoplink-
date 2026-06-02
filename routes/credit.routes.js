@@ -10,6 +10,6 @@ router.use(authMiddleware);
 router.get('/', CreditController.getAll);
 router.post('/', CreditController.createCredit);
 router.get('/:id', CreditController.getById);
-router.post('/:id/pay', roleMiddleware(['manager', 'cashier']), CreditController.pay);
+router.post('/:id/pay', CreditController.pay); // roleMiddleware(['manager', 'cashier'])
 
 module.exports = router;
