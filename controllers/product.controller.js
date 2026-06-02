@@ -216,7 +216,8 @@ exports.getAll = async (req, res, next) => {
     const { Op } = require('sequelize');
     const query = { ...restQuery };
 
-    if (req.shopId) {
+    // POS / in_stock: availability is per-shop stock, not Product.ShopId alone
+    if (req.shopId && in_stock !== 'true') {
       query.ShopId = {
         [Op.or]: [req.shopId, null]
       };
