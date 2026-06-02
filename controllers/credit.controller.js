@@ -127,7 +127,7 @@ const ApiResponse = require('../utils/response');
   // Create a manual debt/credit for a walk-in client (phone-based)
   exports.createCredit = async (req, res, next) => {
     try {
-      const { phone, full_name, address, total_credit, due_date, note } = req.body;
+      const { phone, full_name, address, total_credit, due_date, note, sale_id } = req.body;
       if (!phone || !total_credit) {
         return ApiResponse.error(res, 'phone and total_credit are required', 400);
       }
@@ -147,7 +147,7 @@ const ApiResponse = require('../utils/response');
 
       const credit = await CreditService.addCredit(
         customer.id,
-        null, // no linked sale
+        sale_id || null,
         parseFloat(total_credit),
         due_date || null
       );
