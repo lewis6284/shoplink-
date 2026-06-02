@@ -68,22 +68,27 @@ const { sequelize } = require('../config/database');
   exports.getAll = async (req, res, next) => {
     try {
       const { shop_id, product_id, low_stock } = req.query;
-      
-      const where = {};
-      if (req.user.role !== 'owner') {
-        where.ShopId = req.user.ShopId; // Use req.user.ShopId for safety
-      } else if (shop_id) {
-        where.ShopId = shop_id;
-      } if (product_id) {
+      const { Op } = require('sequelize');
+      const shopId = req.shopId || shop_id || (req.user.role !== 'owner' ? req.user.ShopId : null);
+
+      if (!shopId) {
+        return ApiResponse.success(res, []);
+      }
+
+      const where = { ShopId: shopId };
+      if (product_id) {
         where.ProductId = product_id;
       }
 
       const stocks = await Stock.findAll({
         where,
         include: [
-          { 
+          {
             model: Product,
-            required: false,
+            required: true,
+            where: {
+              [Op.or]: [{ ShopId: shopId }, { ShopId: null }]
+            },
             include: [{ model: Category, required: false }]
           },
           {
@@ -216,13 +221,14 @@ const { sequelize } = require('../config/database');
   exports.getMovements = async (req, res, next) => {
     try {
       const { shop_id, product_id, type, reason } = req.query;
-      
-      const stockWhere = {};
-      if (req.user.role !== 'owner') {
-        stockWhere.ShopId = req.user.ShopId;
-      } else if (shop_id) {
-        stockWhere.ShopId = shop_id;
-      } if (product_id) {
+
+      const shopId = req.shopId || shop_id || (req.user.role !== 'owner' ? req.user.ShopId : null);
+      if (!shopId) {
+        return ApiResponse.success(res, []);
+      }
+
+      const stockWhere = { ShopId: shopId };
+      if (product_id) {
         stockWhere.ProductId = product_id;
       }
 

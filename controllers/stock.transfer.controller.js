@@ -286,14 +286,17 @@ const ApiResponse = require('../utils/response');
 
 exports.getAll = async (req, res, next) => {
     try {
-      const query = {};
-      if (req.user.role !== 'owner') {
-        // Managers see transfers related to their shop
-        query[require('sequelize').Op.or] = [
-          { FromShopId: req.user.ShopId },
-          { ToShopId: req.user.ShopId }
-        ];
+      const { Op } = require('sequelize');
+      const shopId = req.shopId || req.query.shop_id || (req.user.role !== 'owner' ? req.user.ShopId : null);
+      if (!shopId) {
+        return ApiResponse.success(res, []);
       }
+      const query = {
+        [Op.or]: [
+          { FromShopId: shopId },
+          { ToShopId: shopId }
+        ]
+      };
       const transfers = await StockTransferService.getAll(query, { order: [['createdAt', 'DESC']] });
       return ApiResponse.success(res, transfers);
     } catch (error) {
