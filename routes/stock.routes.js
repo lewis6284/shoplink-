@@ -22,7 +22,7 @@ router.get('/reports/daily', roleMiddleware(['owner', 'manager']), StockReportCo
 router.get('/reports/losses', roleMiddleware(['owner', 'manager']), StockReportController.getTopLosses);
 
 // Transfers
-router.get('/transfers', roleMiddleware(['owner', 'manager']), StockTransferController.getAll);
+router.get('/transfers', roleMiddleware(['owner', 'manager','cashier']), StockTransferController.getAll);
 router.post('/transfers', roleMiddleware(['owner']), StockTransferController.create);
 router.patch('/transfers/:id/approve', roleMiddleware(['owner']), StockTransferController.approve);
 router.patch('/transfers/:id/dispatch', roleMiddleware(['owner']), StockTransferController.dispatch);
