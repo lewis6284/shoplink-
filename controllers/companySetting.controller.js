@@ -66,6 +66,12 @@ exports.create = async (req, res, next) => {
   try {
     if (rejectNonPngStamp(req, res)) return;
 
+    const existing = await CompanySetting.findOne();
+    if (existing) {
+      if (req.file) deleteStampFile(`/uploads/${req.file.filename}`);
+      return ApiResponse.error(res, 'Company settings already exist. Please edit the existing company information.', 409);
+    }
+
     const payload = buildPayload(req.body, req.file);
     const record = await CompanySetting.create(payload);
     return ApiResponse.success(res, record, 'Company setting created successfully', 201);
