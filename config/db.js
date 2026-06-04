@@ -23,6 +23,7 @@ const CashRegister = require('../models/CashRegister');
 const CashSession = require('../models/CashSession');
 const AuditLog = require('../models/AuditLog');
 const Unit = require('../models/Unit');
+const CompanySetting = require('../models/CompanySetting');
 
 // --- 🏪 SHOP RELATIONS (MULTI-TENANCY) ---
 Shop.hasMany(User, { foreignKey: 'ShopId' });
@@ -136,5 +137,6 @@ module.exports = {
   CashRegister,
   CashSession,
   AuditLog,
-  Unit
+  Unit,
+  CompanySetting
 };

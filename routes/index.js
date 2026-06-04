@@ -17,6 +17,7 @@ const reportRoutes = require('./report.routes');
 const cashRoutes = require('./cash.routes');
 const userRoutes = require('./user.routes');
 const shopRoutes = require('./shop.routes');
+const companySettingRoutes = require('./companySetting.routes');
 
 // Middlewares
 const authMiddleware = require('../middlewares/auth.middleware');
@@ -32,6 +33,7 @@ router.use(authMiddleware);
 
 // File Uploads
 router.use('/uploads', require('./upload.routes.js'));
+router.use('/company-settings', companySettingRoutes);
 
 // Dashboards & Financials
 router.use('/financials', require('./dashboard.routes.js'));
