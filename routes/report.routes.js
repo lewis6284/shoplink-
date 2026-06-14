@@ -12,6 +12,7 @@ router.post('/trigger/daily', roleMiddleware(['owner', 'manager']), ReportContro
 router.get('/monthly', roleMiddleware(['owner', 'manager']), ReportController.monthly);
 router.get('/top-products', roleMiddleware(['owner', 'manager']), ReportController.topProducts);
 router.get('/profit', roleMiddleware(['owner', 'manager']), ReportController.profit);
+router.get('/inventory', roleMiddleware(['owner', 'manager']), ReportController.inventory);
 router.get('/stock-alerts', roleMiddleware(['owner', 'manager']), ReportController.stockAlerts);
 router.get('/employee-sales', roleMiddleware(['owner', 'manager']), ReportController.employeeSales);
 

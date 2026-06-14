@@ -4,6 +4,7 @@ const { sequelize } = require('../config/database');
 const Sale = require('../models/Sale');
 const SaleItem = require('../models/SaleItem');
 const Product = require('../models/Product');
+const Stock = require('../models/Stock');
 const Expense = require('../models/Expense');
 const User = require('../models/User');
 const Invoice = require('../models/Invoice');
@@ -412,6 +413,104 @@ const ReportService = {
     return items;
   },
 
+  async inventoryReport(startDate, endDate, shopId = null) {
+    const start = startDate || new Date().toISOString().split('T')[0];
+    const end = endDate || new Date().toISOString().split('T')[0];
+    const whereSale = {
+      status: 'COMPLETED',
+      createdAt: { [Op.between]: [`${start} 00:00:00`, `${end} 23:59:59`] }
+    };
+    if (shopId) whereSale.ShopId = shopId;
+
+    const stockRows = await Stock.findAll({
+      where: shopId ? { ShopId: shopId } : {},
+      attributes: ['ProductId', 'quantity'],
+      raw: true
+    });
+    const stockByProduct = new Map(stockRows.map(s => [s.ProductId, Number(s.quantity)]));
+
+    const items = await SaleItem.findAll({
+      attributes: [
+        'ProductId',
+        [fn('SUM', col('SaleItem.quantity')), 'quantity_sold'],
+        [fn('SUM', col('SaleItem.subTotal')), 'total_revenue'],
+        [fn('SUM', literal('quantity * unitCostSnapshot')), 'total_cost'],
+        [fn('SUM', literal('(unitPrice - unitCostSnapshot) * quantity')), 'gross_profit'],
+        [fn('SUM', literal("CASE WHEN priceType = 'RETAIL' THEN quantity ELSE 0 END")), 'retail_qty'],
+        [fn('SUM', literal("CASE WHEN priceType = 'PARTNER' THEN quantity ELSE 0 END")), 'partner_qty'],
+        [fn('SUM', literal("CASE WHEN priceType = 'WHOLESALE' THEN quantity ELSE 0 END")), 'wholesale_qty']
+      ],
+      include: [
+        { model: Product, attributes: ['id', 'name', 'purchasePrice', 'sellingPrice', 'partnerPrice', 'wholesalePrice'] },
+        { model: Sale, attributes: [], where: whereSale }
+      ],
+      group: [
+        'ProductId',
+        'Product.id',
+        'Product.name',
+        'Product.purchasePrice',
+        'Product.sellingPrice',
+        'Product.partnerPrice',
+        'Product.wholesalePrice'
+      ],
+      order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
+      raw: false,
+      subQuery: false
+    });
+
+    const rows = items.map(item => {
+      const qtySold = parseFloat(item.get('quantity_sold') || 0);
+      const totalRevenue = parseFloat(item.get('total_revenue') || 0);
+      const totalCost = parseFloat(item.get('total_cost') || 0);
+      const grossProfit = parseFloat(item.get('gross_profit') || 0);
+      const retailQty = parseFloat(item.get('retail_qty') || 0);
+      const partnerQty = parseFloat(item.get('partner_qty') || 0);
+      const wholesaleQty = parseFloat(item.get('wholesale_qty') || 0);
+
+      return {
+        product_id: item.Product?.id || item.ProductId,
+        product_name: item.Product?.name || 'Unknown Product',
+        quantity_entered: qtySold,
+        quantity_sold: qtySold,
+        remaining_quantity: stockByProduct.get(item.ProductId) || 0,
+        unit_buying_price: Number(item.Product?.purchasePrice || 0),
+        unit_retail_price: Number(item.Product?.sellingPrice || 0),
+        unit_partner_price: Number(item.Product?.partnerPrice || 0),
+        unit_wholesale_price: Number(item.Product?.wholesalePrice || 0),
+        total_revenue: totalRevenue,
+        total_cost: totalCost,
+        gross_profit: grossProfit,
+        retail_qty: retailQty,
+        partner_qty: partnerQty,
+        wholesale_qty: wholesaleQty
+      };
+    });
+
+    const availableColumns = [
+      { key: 'product_name', label: 'Product Name' },
+      { key: 'quantity_entered', label: 'Quantity Entered' },
+      { key: 'quantity_sold', label: 'Quantity Sold' },
+      { key: 'remaining_quantity', label: 'Remaining Quantity' },
+      { key: 'unit_buying_price', label: 'Unit Buying Price' },
+      { key: 'unit_retail_price', label: 'Retail Price' },
+      { key: 'unit_partner_price', label: 'Partner Price' },
+      { key: 'unit_wholesale_price', label: 'Wholesale Price' },
+      { key: 'total_revenue', label: 'Total Sales' },
+      { key: 'total_cost', label: 'Total Cost' },
+      { key: 'gross_profit', label: 'Gross Profit' },
+      { key: 'retail_qty', label: 'Retail Qty' },
+      { key: 'partner_qty', label: 'Partner Qty' },
+      { key: 'wholesale_qty', label: 'Wholesale Qty' }
+    ];
+
+    return {
+      start_date: start,
+      end_date: end,
+      availableColumns,
+      rows
+    };
+  },
+
   /**
    * GET /reports/profit — Profit per date range
    */
@@ -663,6 +762,17 @@ const ApiResponse = require('../utils/response');
       const shopId = req.shopId || null;
       const data = await ReportService.profit(start_date, end_date, shopId);
       return ApiResponse.success(res, data, 'Profit report');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  exports.inventory = async (req, res, next) => {
+    try {
+      const { start_date, end_date } = req.query;
+      const shopId = req.shopId || null;
+      const data = await ReportService.inventoryReport(start_date, end_date, shopId);
+      return ApiResponse.success(res, data, 'Inventory report');
     } catch (error) {
       next(error);
     }

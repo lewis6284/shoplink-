@@ -25,6 +25,15 @@ const SaleItem = sequelize.define('SaleItem', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
+  priceType: {
+    type: DataTypes.ENUM(
+      'RETAIL',
+      'PARTNER',
+      'WHOLESALE'
+    ),
+    allowNull: false,
+    defaultValue: 'RETAIL'
+  },
   SaleId: {
     type: DataTypes.CHAR(36),
     references: { model: Sale, key: 'id' }
@@ -42,5 +51,9 @@ SaleItem.belongsTo(Product, { foreignKey: 'ProductId' });
 
 Sale.hasMany(SaleItem, { foreignKey: 'SaleId' });
 Product.hasMany(SaleItem, { foreignKey: 'ProductId' });
-
+SaleItem.beforeUpdate((instance) => {
+  if (instance.changed('priceType') || instance.changed('unitPrice')) {
+    throw new Error('SaleItem priceType and unitPrice are immutable after creation.');
+  }
+});
 module.exports = SaleItem;

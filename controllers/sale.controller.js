@@ -30,6 +30,9 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         }
       }
 
+      const customerType = (saleData.customerType || 'retail').toLowerCase();
+      const priceType = customerType === 'wholesale' ? 'WHOLESALE' : customerType === 'partner' ? 'PARTNER' : 'RETAIL';
+
       for (const item of items) {
         const product = await Product.findByPk(item.ProductId, { transaction });
         if (!product) throw new Error(`Product ${item.ProductId} not found`);
@@ -45,14 +48,15 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         }
 
         // Apply Pricing Engine
-        const pricing = await PricingEngine.calculate(product, saleData.customerType || 'retail', item.quantity, shopId);
+        const pricing = await PricingEngine.calculate(product, customerType, item.quantity, shopId);
         
         processedItems.push({
           ProductId: item.ProductId,
           quantity: item.quantity,
           unitPrice: pricing.unitPrice,
-          subTotal: pricing.total,
+          subTotal: pricing.subtotal,
           unitCostSnapshot: product.purchasePrice,
+          priceType,
           taxType: pricing.taxType
         });
 
@@ -89,6 +93,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
         unitPrice: pi.unitPrice,
         subTotal: pi.subTotal,
         unitCostSnapshot: pi.unitCostSnapshot,
+        priceType: pi.priceType,
         SaleId: sale.id
       })), { transaction });
 
