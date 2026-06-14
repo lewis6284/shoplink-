@@ -490,6 +490,14 @@ const ReportService = {
       };
     });
 
+    // Compute grand totals from the aggregated rows to avoid frontend mismatches
+    const grandTotals = rows.reduce((acc, r) => {
+      acc.total_revenue += Number(r.total_revenue || 0);
+      acc.total_cost += Number(r.total_cost || 0);
+      return acc;
+    }, { total_revenue: 0, total_cost: 0 });
+    grandTotals.gross_profit = grandTotals.total_revenue - grandTotals.total_cost;
+
     const availableColumns = [
       { key: 'product_name', label: 'Product Name' },
       { key: 'quantity_entered', label: 'Quantity Entered' },
@@ -511,7 +519,12 @@ const ReportService = {
       start_date: start,
       end_date: end,
       availableColumns,
-      rows
+      rows,
+      totals: {
+        total_revenue: grandTotals.total_revenue,
+        total_cost: grandTotals.total_cost,
+        gross_profit: grandTotals.gross_profit
+      }
     };
   },
 
