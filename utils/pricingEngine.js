@@ -56,16 +56,13 @@ module.exports = {
         finalUnitPrice = Math.max(0, originalPrice - Number(rule.rule_value));
       }
     } else {
-      // Static tier prices on the product (no dynamic rule)
+      // Static tier prices on the product (no dynamic partner tier)
       const tier = (type || 'retail').toLowerCase();
       if (tier === 'wholesale') {
         const wholesale = Number(product.wholesalePrice);
-        const partner = Number(product.partnerPrice);
         if (wholesale > 0) finalUnitPrice = wholesale;
-        else if (partner > 0) finalUnitPrice = partner;
-      } else if (tier === 'partner') {
-        const partner = Number(product.partnerPrice);
-        if (partner > 0) finalUnitPrice = partner;
+      } else {
+        finalUnitPrice = originalPrice;
       }
     }
 

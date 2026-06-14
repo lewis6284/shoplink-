@@ -437,11 +437,10 @@ const ReportService = {
         [fn('SUM', literal('quantity * unitCostSnapshot')), 'total_cost'],
         [fn('SUM', literal('(unitPrice - unitCostSnapshot) * quantity')), 'gross_profit'],
         [fn('SUM', literal("CASE WHEN priceType = 'RETAIL' THEN quantity ELSE 0 END")), 'retail_qty'],
-        [fn('SUM', literal("CASE WHEN priceType = 'PARTNER' THEN quantity ELSE 0 END")), 'partner_qty'],
         [fn('SUM', literal("CASE WHEN priceType = 'WHOLESALE' THEN quantity ELSE 0 END")), 'wholesale_qty']
       ],
       include: [
-        { model: Product, attributes: ['id', 'name', 'purchasePrice', 'sellingPrice', 'partnerPrice', 'wholesalePrice'] },
+          { model: Product, attributes: ['id', 'name', 'purchasePrice', 'sellingPrice', 'wholesalePrice'] },
         { model: Sale, attributes: [], where: whereSale }
       ],
       group: [
@@ -450,7 +449,6 @@ const ReportService = {
         'Product.name',
         'Product.purchasePrice',
         'Product.sellingPrice',
-        'Product.partnerPrice',
         'Product.wholesalePrice'
       ],
       order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
@@ -479,13 +477,11 @@ const ReportService = {
         remaining_quantity: remainingQty,
         unit_buying_price: Number(item.Product?.purchasePrice || 0),
         unit_retail_price: Number(item.Product?.sellingPrice || 0),
-        unit_partner_price: Number(item.Product?.partnerPrice || 0),
         unit_wholesale_price: Number(item.Product?.wholesalePrice || 0),
         total_revenue: totalRevenue,
         total_cost: totalCost,
         gross_profit: grossProfit,
         retail_qty: retailQty,
-        partner_qty: partnerQty,
         wholesale_qty: wholesaleQty
       };
     });
@@ -505,13 +501,11 @@ const ReportService = {
       { key: 'remaining_quantity', label: 'Remaining Quantity' },
       { key: 'unit_buying_price', label: 'Unit Buying Price' },
       { key: 'unit_retail_price', label: 'Retail Price' },
-      { key: 'unit_partner_price', label: 'Partner Price' },
       { key: 'unit_wholesale_price', label: 'Wholesale Price' },
       { key: 'total_revenue', label: 'Total Sales' },
       { key: 'total_cost', label: 'Total Cost' },
       { key: 'gross_profit', label: 'Gross Profit' },
       { key: 'retail_qty', label: 'Retail Qty' },
-      { key: 'partner_qty', label: 'Partner Qty' },
       { key: 'wholesale_qty', label: 'Wholesale Qty' }
     ];
 

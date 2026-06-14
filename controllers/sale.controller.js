@@ -25,13 +25,14 @@ exports.createSale = async (saleData, items, userId, req = null) => {
       if (saleData.CustomerId) {
         const Customer = require('../models/Customer');
         const customer = await Customer.findByPk(saleData.CustomerId, { transaction });
-        if (customer && (customer.customer_type === 'partner' || customer.customer_type === 'wholesale')) {
+        if (customer && customer.customer_type === 'wholesale') {
           requiresApproval = true;
         }
       }
 
-      const customerType = (saleData.customerType || 'retail').toLowerCase();
-      const priceType = customerType === 'wholesale' ? 'WHOLESALE' : customerType === 'partner' ? 'PARTNER' : 'RETAIL';
+      const rawCustomerType = (saleData.customerType || 'retail').toLowerCase();
+      const customerType = rawCustomerType === 'wholesale' ? 'wholesale' : 'retail';
+      const priceType = customerType === 'wholesale' ? 'WHOLESALE' : 'RETAIL';
 
       for (const item of items) {
         const product = await Product.findByPk(item.ProductId, { transaction });
@@ -47,7 +48,7 @@ exports.createSale = async (saleData, items, userId, req = null) => {
           throw new Error(`Insufficient stock for ${product.name} at this shop`);
         }
 
-        // Apply Pricing Engine
+        // Apply Pricing Engine, mapping any legacy partner type to retail pricing
         const pricing = await PricingEngine.calculate(product, customerType, item.quantity, shopId);
         
         processedItems.push({

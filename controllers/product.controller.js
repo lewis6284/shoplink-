@@ -12,7 +12,15 @@ const { sequelize } = require('../config/database');
 const AuditService = require('../utils/audit');
 
 const ProductService = {
-
+  _sanitizeDecimalPayload(data) {
+    const payload = { ...data };
+    ['partnerPrice', 'wholesalePrice'].forEach((field) => {
+      if (payload[field] === '' || payload[field] === null) {
+        delete payload[field];
+      }
+    });
+    return payload;
+  },
 
   async getAll(query = {}, options = {}) {
     return await Product.findAll({
@@ -76,7 +84,8 @@ const ProductService = {
 
       // 1. Create Product
       console.log("DEBUG: Creating Product record...");
-      const product = await Product.create(data, { transaction });
+      const normalizedData = this._sanitizeDecimalPayload(data);
+      const product = await Product.create(normalizedData, { transaction });
 
       // 2. Initialize Global Stock
       console.log("DEBUG: Initializing Global Stock...");
@@ -121,8 +130,9 @@ const ProductService = {
   async update(id, data, userId = null, req = null) {
     const product = await this.getById(id);
     const oldValues = product.toJSON();
+    const normalizedData = this._sanitizeDecimalPayload(data);
 
-    await product.update(data);
+    await product.update(normalizedData);
 
     if (userId) {
       await AuditService.log({
