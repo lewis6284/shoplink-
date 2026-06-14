@@ -467,12 +467,16 @@ const ReportService = {
       const partnerQty = parseFloat(item.get('partner_qty') || 0);
       const wholesaleQty = parseFloat(item.get('wholesale_qty') || 0);
 
+      const remainingQty = Number(stockByProduct.get(item.ProductId) || 0);
+      // Compute quantity_entered as sold + remaining to ensure consistency
+      const quantityEntered = qtySold + remainingQty;
+
       return {
         product_id: item.Product?.id || item.ProductId,
         product_name: item.Product?.name || 'Unknown Product',
-        quantity_entered: qtySold,
+        quantity_entered: quantityEntered,
         quantity_sold: qtySold,
-        remaining_quantity: stockByProduct.get(item.ProductId) || 0,
+        remaining_quantity: remainingQty,
         unit_buying_price: Number(item.Product?.purchasePrice || 0),
         unit_retail_price: Number(item.Product?.sellingPrice || 0),
         unit_partner_price: Number(item.Product?.partnerPrice || 0),
