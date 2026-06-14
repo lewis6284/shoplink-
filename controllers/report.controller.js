@@ -462,7 +462,6 @@ const ReportService = {
       const totalCost = parseFloat(item.get('total_cost') || 0);
       const grossProfit = parseFloat(item.get('gross_profit') || 0);
       const retailQty = parseFloat(item.get('retail_qty') || 0);
-      const partnerQty = parseFloat(item.get('partner_qty') || 0);
       const wholesaleQty = parseFloat(item.get('wholesale_qty') || 0);
 
       const remainingQty = Number(stockByProduct.get(item.ProductId) || 0);

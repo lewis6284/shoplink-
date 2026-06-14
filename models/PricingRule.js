@@ -12,7 +12,7 @@ const PricingRule = sequelize.define('PricingRule', {
     allowNull: false
   },
   customer_type: {
-    type: DataTypes.ENUM('retail', 'partner', 'wholesale'),
+    type: DataTypes.ENUM('retail', 'wholesale'),
     defaultValue: 'retail'
   },
   CategoryId: {

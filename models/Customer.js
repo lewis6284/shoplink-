@@ -36,11 +36,11 @@ const Customer = sequelize.define('Customer', {
     defaultValue: 0
   },
   type: {
-    type: DataTypes.ENUM('normal', 'partner'),
+    type: DataTypes.ENUM('normal'),
     defaultValue: 'normal'
   },
   customer_type: {
-    type: DataTypes.ENUM('retail', 'partner', 'wholesale'),
+    type: DataTypes.ENUM('retail', 'wholesale'),
     defaultValue: 'retail'
   }
 }, {

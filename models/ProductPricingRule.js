@@ -16,7 +16,7 @@ const ProductPricingRule = sequelize.define('ProductPricingRule', {
     allowNull: false
   },
   customer_type: {
-    type: DataTypes.ENUM('retail', 'partner', 'wholesale'),
+    type: DataTypes.ENUM('retail', 'wholesale'),
     allowNull: false
   },
   min_quantity: {
