@@ -15,11 +15,11 @@ const Product = sequelize.define('Product', {
     type: DataTypes.CHAR(36),
     allowNull: true
   },
-  product_code: {
-    type: DataTypes.STRING(50),
-    unique: true,
-    allowNull: false
-  },
+  // product_code: {
+  //   type: DataTypes.STRING(50),
+  //   unique: true,
+  //   allowNull: false
+  // },
   name: {
     type: DataTypes.STRING(255),
     allowNull: false

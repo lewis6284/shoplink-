@@ -25,10 +25,6 @@ const ProductService = {
   _mapPayloadFields(data) {
     const payload = { ...data };
 
-    if (!payload.product_code && payload.sku) {
-      payload.product_code = payload.sku;
-    }
-
     if (!payload.purchasePrice && payload.buyingPrice) {
       payload.purchasePrice = payload.buyingPrice;
     }
@@ -36,13 +32,13 @@ const ProductService = {
     return payload;
   },
 
-  async _getNextProductCodeSequence(transaction) {
-    const tableName = Product.getTableName ? Product.getTableName() : Product.tableName;
-    const query = `SELECT MAX(CAST(SUBSTRING(product_code, 5) AS UNSIGNED)) AS max_seq FROM \`${tableName}\` WHERE product_code LIKE 'PRD-%'`;
-    const [results] = await sequelize.query(query, { transaction, type: sequelize.QueryTypes.SELECT });
-    const maxSeq = results?.max_seq || 0;
-    return Number(maxSeq) + 1;
-  },
+  // async _getNextProductCodeSequence(transaction) {
+  //   const tableName = Product.getTableName ? Product.getTableName() : Product.tableName;
+  //   const query = `SELECT MAX(CAST(SUBSTRING(product_code, 5) AS UNSIGNED)) AS max_seq FROM \`${tableName}\` WHERE product_code LIKE 'PRD-%'`;
+  //   const [results] = await sequelize.query(query, { transaction, type: sequelize.QueryTypes.SELECT });
+  //   const maxSeq = results?.max_seq || 0;
+  //   return Number(maxSeq) + 1;
+  // },
 
   async getAll(query = {}, options = {}) {
     return await Product.findAll({
@@ -84,11 +80,11 @@ const ProductService = {
       console.log("DEBUG: Payload after mapping:", payload);
 
       // Auto-generate product_code when missing
-      if (!payload.product_code) {
-        const nextNumber = await this._getNextProductCodeSequence(transaction);
-        payload.product_code = `PRD-${String(nextNumber).padStart(6, '0')}`;
-        console.log("DEBUG: Generated code:", payload.product_code);
-      }
+      // if (!payload.product_code) {
+      //   const nextNumber = await this._getNextProductCodeSequence(transaction);
+      //   payload.product_code = `PRD-${String(nextNumber).padStart(6, '0')}`;
+      //   console.log("DEBUG: Generated code:", payload.product_code);
+      // }
 
       let product;
       let attempt = 0;
@@ -99,16 +95,16 @@ const ProductService = {
           product = await Product.create(normalizedData, { transaction });
           break;
         } catch (error) {
-          const isDuplicateProductCode = error.name === 'SequelizeUniqueConstraintError'
-            && error.errors.some((item) => item.path === 'product_code');
+          // const isDuplicateProductCode = error.name === 'SequelizeUniqueConstraintError'
+          //   && error.errors.some((item) => item.path === 'product_code');
 
-          if (isDuplicateProductCode && !data.product_code && attempt < 5) {
-            attempt += 1;
-            const currentNumber = Number(payload.product_code.slice(4)) || 0;
-            payload.product_code = `PRD-${String(currentNumber + 1).padStart(6, '0')}`;
-            console.warn('DEBUG: product_code collision, retrying with', payload.product_code);
-            continue;
-          }
+          // if (isDuplicateProductCode && !data.product_code && attempt < 5) {
+          //   attempt += 1;
+          //   const currentNumber = Number(payload.product_code.slice(4)) || 0;
+          //   payload.product_code = `PRD-${String(currentNumber + 1).padStart(6, '0')}`;
+          //   console.warn('DEBUG: product_code collision, retrying with', payload.product_code);
+          //   continue;
+          // }
 
           throw error;
         }
@@ -267,8 +263,8 @@ exports.getAll = async (req, res, next) => {
     if (search) {
       query[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
-        { barcode: { [Op.like]: `%${search}%` } },
-        { product_code: { [Op.like]: `%${search}%` } }
+        { barcode: { [Op.like]: `%${search}%` } }
+        // { product_code: { [Op.like]: `%${search}%` } }
       ];
     }
 
