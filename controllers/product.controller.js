@@ -22,6 +22,41 @@ const ProductService = {
     return payload;
   },
 
+  _mapPayloadFields(data) {
+    const payload = { ...data };
+
+    if (!payload.product_code && payload.sku) {
+      payload.product_code = payload.sku;
+    }
+
+    if (!payload.purchasePrice && payload.buyingPrice) {
+      payload.purchasePrice = payload.buyingPrice;
+    }
+
+    return payload;
+  },
+
+  async _getNextProductCodeSequence(transaction) {
+    const { Op } = sequelize.Sequelize;
+    const lastProduct = await Product.findOne({
+      where: {
+        product_code: {
+          [Op.like]: 'PRD-%'
+        }
+      },
+      order: [[sequelize.literal("CAST(SUBSTRING(`product_code`, 5) AS UNSIGNED)"), 'DESC']],
+      attributes: ['product_code'],
+      transaction
+    });
+
+    if (!lastProduct || !lastProduct.product_code) {
+      return 1;
+    }
+
+    const match = lastProduct.product_code.match(/^PRD-(\d+)$/);
+    return match ? parseInt(match[1], 10) + 1 : 1;
+  },
+
   async getAll(query = {}, options = {}) {
     return await Product.findAll({
       where: query,
@@ -58,34 +93,38 @@ const ProductService = {
     console.log("DEBUG: Service.create data:", data);
     const transaction = await sequelize.transaction();
     try {
-      // Auto-generate product_code
-      if (!data.product_code) {
-        const lastProduct = await Product.findOne({
-          where: {
-            product_code: {
-              [sequelize.Sequelize.Op.like]: 'PRD-%'
-            }
-          },
-          order: [['createdAt', 'DESC']],
-          attributes: ['product_code'],
-          transaction
-        });
+      const payload = this._mapPayloadFields(data);
 
-        let nextNumber = 1;
-        if (lastProduct && lastProduct.product_code) {
-          const parts = lastProduct.product_code.split('-');
-          if (parts.length === 2 && !isNaN(parts[1])) {
-            nextNumber = parseInt(parts[1], 10) + 1;
-          }
-        }
-        data.product_code = `PRD-${String(nextNumber).padStart(6, '0')}`;
-        console.log("DEBUG: Generated code:", data.product_code);
+      // Auto-generate product_code when missing
+      if (!payload.product_code) {
+        const nextNumber = await this._getNextProductCodeSequence(transaction);
+        payload.product_code = `PRD-${String(nextNumber).padStart(6, '0')}`;
+        console.log("DEBUG: Generated code:", payload.product_code);
       }
 
-      // 1. Create Product
-      console.log("DEBUG: Creating Product record...");
-      const normalizedData = this._sanitizeDecimalPayload(data);
-      const product = await Product.create(normalizedData, { transaction });
+      let product;
+      let attempt = 0;
+      while (true) {
+        try {
+          console.log("DEBUG: Creating Product record...");
+          const normalizedData = this._sanitizeDecimalPayload(payload);
+          product = await Product.create(normalizedData, { transaction });
+          break;
+        } catch (error) {
+          const isDuplicateProductCode = error.name === 'SequelizeUniqueConstraintError'
+            && error.errors.some((item) => item.path === 'product_code');
+
+          if (isDuplicateProductCode && !data.product_code && attempt < 5) {
+            attempt += 1;
+            const currentNumber = Number(payload.product_code.slice(4)) || 0;
+            payload.product_code = `PRD-${String(currentNumber + 1).padStart(6, '0')}`;
+            console.warn('DEBUG: product_code collision, retrying with', payload.product_code);
+            continue;
+          }
+
+          throw error;
+        }
+      }
 
       // 2. Initialize Global Stock
       console.log("DEBUG: Initializing Global Stock...");
@@ -130,7 +169,7 @@ const ProductService = {
   async update(id, data, userId = null, req = null) {
     const product = await this.getById(id);
     const oldValues = product.toJSON();
-    const normalizedData = this._sanitizeDecimalPayload(data);
+    const normalizedData = this._sanitizeDecimalPayload(this._mapPayloadFields(data));
 
     await product.update(normalizedData);
 
