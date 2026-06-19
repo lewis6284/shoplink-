@@ -37,24 +37,11 @@ const ProductService = {
   },
 
   async _getNextProductCodeSequence(transaction) {
-    const { Op } = sequelize.Sequelize;
-    const lastProduct = await Product.findOne({
-      where: {
-        product_code: {
-          [Op.like]: 'PRD-%'
-        }
-      },
-      order: [[sequelize.literal("CAST(SUBSTRING(`product_code`, 5) AS UNSIGNED)"), 'DESC']],
-      attributes: ['product_code'],
-      transaction
-    });
-
-    if (!lastProduct || !lastProduct.product_code) {
-      return 1;
-    }
-
-    const match = lastProduct.product_code.match(/^PRD-(\d+)$/);
-    return match ? parseInt(match[1], 10) + 1 : 1;
+    const tableName = Product.getTableName ? Product.getTableName() : Product.tableName;
+    const query = `SELECT MAX(CAST(SUBSTRING(product_code, 5) AS UNSIGNED)) AS max_seq FROM \`${tableName}\` WHERE product_code LIKE 'PRD-%'`;
+    const [results] = await sequelize.query(query, { transaction, type: sequelize.QueryTypes.SELECT });
+    const maxSeq = results?.max_seq || 0;
+    return Number(maxSeq) + 1;
   },
 
   async getAll(query = {}, options = {}) {
@@ -94,6 +81,7 @@ const ProductService = {
     const transaction = await sequelize.transaction();
     try {
       const payload = this._mapPayloadFields(data);
+      console.log("DEBUG: Payload after mapping:", payload);
 
       // Auto-generate product_code when missing
       if (!payload.product_code) {
